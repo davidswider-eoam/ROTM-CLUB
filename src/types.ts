@@ -15,6 +15,7 @@ export interface Subscriber {
   end: string | null; // YYYY-MM
   notes: string;
   flag: boolean;
+  shipped_months?: string[]; // Array of YYYY-MM strings
 }
 
 export interface CatalogEntry {

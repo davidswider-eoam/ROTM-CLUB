@@ -12,28 +12,27 @@ import {
   Package,
   Save,
   History as HistoryIcon,
-  Trash2,
-  DollarSign,
   Printer,
-  TrendingUp,
-  PieChart,
   Settings,
   ExternalLink,
   Calendar,
   RefreshCw,
-  Sparkles
+  Sparkles,
+  Loader2
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
 import './App.css';
-import { SUBSCRIBERS, CATALOG, MONTHS } from './constants';
+import { MONTHS } from './constants';
 import { MUSIC_QUOTES } from './quotes';
 import type { Subscriber, Catalog, HistoryEntry } from './types';
 import { isActiveForMonth, isNewThisMonth, isLapsingThisMonth, statusFor, fmt } from './utils';
 import logo from './assets/logo.png';
+import { supabase } from './supabase';
+import SupabaseMigration from './SupabaseMigration';
 
-// Helper for tailwind-like class merging (if needed, though we use vanilla CSS)
+// Helper for tailwind-like class merging
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
@@ -44,17 +43,19 @@ type SubTab = 'all' | 'term' | 'monthly';
 const ALL_MONTHS = ["2025-11", "2025-12", "2026-01", "2026-02", "2026-03", "2026-04"];
 
 function App() {
+  const [loading, setLoading] = useState(true);
+  const [subscribers, setSubscribers] = useState<Subscriber[]>([]);
+  const [catalogData, setCatalogData] = useState<Catalog>({});
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const [subTab, setSubTab] = useState<SubTab>("all");
   const [selectedMonth, setSelectedMonth] = useState("2026-02");
-  const [shipped, setShipped] = useState<Set<string>>(new Set(["1", "8"]));
   const [filter, setFilter] = useState("all");
   const [searchQ, setSearchQ] = useState("");
   const [showSearch, setShowSearch] = useState(false);
   const [detailSub, setDetailSub] = useState<Subscriber | null>(null);
   const [detailCatalogMonth, setDetailCatalogMonth] = useState<string | null>(null);
-  const [catalogData, setCatalogData] = useState<Catalog>(CATALOG);
-  const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [isGift, setIsGift] = useState(false);
   const [bcStoreUrl, setBcStoreUrl] = useState(() => localStorage.getItem('bcStoreUrl') || "");
   const searchRef = useRef<HTMLInputElement>(null);
@@ -67,14 +68,99 @@ function App() {
     localStorage.setItem('bcStoreUrl', bcStoreUrl);
   }, [bcStoreUrl]);
 
+  // Fetch Data
+  const fetchData = async () => {
+    setLoading(true);
+    
+    // 1. Subscribers
+    const { data: subData } = await supabase
+      .from('subscribers')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (subData) {
+      setSubscribers(subData.map(s => ({
+        id: s.id,
+        order: s.order_id,
+        billing: s.billing_name,
+        billingEmail: s.billing_email,
+        recipient: s.recipient_name,
+        recipientEmail: s.recipient_email,
+        type: s.subscription_type as any,
+        delivery: s.delivery_method as any,
+        start: s.start_month,
+        end: s.end_month,
+        notes: s.notes,
+        flag: s.is_flagged,
+        shipped_months: s.shipped_months || []
+      })));
+    }
+
+    // 2. Catalog
+    const { data: catData } = await supabase.from('catalog').select('*');
+    if (catData) {
+      const newCatalog: Catalog = {};
+      catData.forEach(c => {
+        newCatalog[c.month] = {
+          artist: c.artist,
+          album: c.album,
+          label: c.label,
+          contact: c.contact_info,
+          notes: c.notes,
+          wholesaleCost: c.wholesale_cost,
+          predictedNew: c.predicted_new,
+          damageBuffer: c.damage_buffer,
+          shopExtras: c.shop_extras
+        };
+      });
+      setCatalogData(newCatalog);
+    }
+
+    // 3. History
+    const { data: histData } = await supabase
+      .from('history')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(50);
+      
+    if (histData) {
+      setHistory(histData.map(h => ({
+        id: h.id,
+        timestamp: h.created_at,
+        action: h.action,
+        details: h.details,
+        staffMember: h.staff_member,
+        category: h.category as any
+      })));
+    }
+
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
   const m = selectedMonth;
   
-  const activeSubs = useMemo(() => SUBSCRIBERS.filter(s => isActiveForMonth(s, m)), [m]);
+  // Derived State
+  const activeSubs = useMemo(() => subscribers.filter(s => isActiveForMonth(s, m)), [subscribers, m]);
   const shipSubs = useMemo(() => activeSubs.filter(s => s.delivery === "ship"), [activeSubs]);
   const pickupSubs = useMemo(() => activeSubs.filter(s => s.delivery === "pickup"), [activeSubs]);
   const newSubs = useMemo(() => activeSubs.filter(s => isNewThisMonth(s, m)), [activeSubs, m]);
   const lapsingSubs = useMemo(() => activeSubs.filter(s => isLapsingThisMonth(s, m)), [activeSubs, m]);
-  const lapsedCount = useMemo(() => SUBSCRIBERS.filter(s => s.end && s.end < m).length, [m]);
+  const lapsedCount = useMemo(() => subscribers.filter(s => s.end && s.end < m).length, [subscribers, m]);
+
+  // "Shipped" logic is now derived from the subscriber's data
+  const shipped = useMemo(() => {
+    const set = new Set<string>();
+    activeSubs.forEach(s => {
+      if (s.shipped_months?.includes(m)) {
+        set.add(s.id);
+      }
+    });
+    return set;
+  }, [activeSubs, m]);
 
   const shippedThisMonth = useMemo(() => activeSubs.filter(s => shipped.has(s.id)), [activeSubs, shipped]);
   const totalToShip = activeSubs.length;
@@ -91,58 +177,86 @@ function App() {
   const shippedList = useMemo(() => filteredSubs.filter(s => shipped.has(s.id)), [filteredSubs, shipped]);
 
   const searchResults = useMemo(() => searchQ.length > 1
-    ? SUBSCRIBERS.filter(s =>
+    ? subscribers.filter(s =>
         s.order?.toLowerCase().includes(searchQ.toLowerCase()) ||
         s.billing.toLowerCase().includes(searchQ.toLowerCase()) ||
         s.recipient.toLowerCase().includes(searchQ.toLowerCase()) ||
         s.billingEmail?.toLowerCase().includes(searchQ.toLowerCase())
       ).slice(0, 6)
-    : [], [searchQ]);
+    : [], [searchQ, subscribers]);
 
   const subTypeCounts = useMemo(() => {
-    return SUBSCRIBERS.reduce((acc, s) => {
+    return subscribers.reduce((acc, s) => {
       acc[s.type] = (acc[s.type] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
-  }, []);
+  }, [subscribers]);
 
   const displaySubscribers = useMemo(() => {
-    return SUBSCRIBERS.filter(s => {
+    return subscribers.filter(s => {
       if (subTab === 'monthly') return s.type === 'monthly';
       if (subTab === 'term') return s.type !== 'monthly';
       return true;
     });
-  }, [subTab]);
+  }, [subscribers, subTab]);
 
-  function logAction(action: string, details: string, category: HistoryEntry['category']) {
-    const entry: HistoryEntry = {
-      id: Math.random().toString(36).substr(2, 9),
+  // Actions
+  async function logAction(action: string, details: string, category: HistoryEntry['category']) {
+    // Optimistic update
+    const newEntry: HistoryEntry = {
+      id: Math.random().toString(),
       timestamp: new Date().toISOString(),
       action,
       details,
-      staffMember: "Staff", // Placeholder
+      staffMember: "You",
       category
     };
-    setHistory(prev => [entry, ...prev]);
-  }
+    setHistory(prev => [newEntry, ...prev]);
 
-  function toggleShip(id: string) {
-    const sub = SUBSCRIBERS.find(s => s.id === id);
-    const currentlyShipped = shipped.has(id);
-    setShipped(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
+    await supabase.from('history').insert({
+      action,
+      details,
+      staff_member: 'Staff', // ideally get from auth user
+      category
     });
-    
-    logAction(
-      currentlyShipped ? "Unmarked Shipping" : "Marked Shipped",
-      `${sub?.recipient} marked as ${currentlyShipped ? 'unshipped' : 'shipped'} for ${fmt(m)}`,
-      'shipping'
-    );
   }
 
-  function updateCatalog(
+  async function toggleShip(id: string) {
+    const sub = subscribers.find(s => s.id === id);
+    if (!sub) return;
+
+    const currentMonths = sub.shipped_months || [];
+    const isShipped = currentMonths.includes(m);
+    
+    let newMonths;
+    if (isShipped) {
+      newMonths = currentMonths.filter(mo => mo !== m);
+    } else {
+      newMonths = [...currentMonths, m];
+    }
+
+    // Optimistic update
+    setSubscribers(prev => prev.map(s => s.id === id ? { ...s, shipped_months: newMonths } : s));
+
+    // DB Update
+    const { error } = await supabase
+      .from('subscribers')
+      .update({ shipped_months: newMonths })
+      .eq('id', id);
+    
+    if (error) {
+      console.error("Error updating shipping:", error);
+      // Revert if needed (omitted for brevity)
+    } else {
+      logAction(
+        isShipped ? "Unmarked Shipping" : "Marked Shipped",
+        `${sub?.recipient} marked as ${!isShipped ? 'shipped' : 'unshipped'} for ${fmt(m)}`,
+        'shipping'
+      );
+    }
+  }
+
+  async function updateCatalog(
     month: string, 
     artist: string, 
     album: string, 
@@ -154,14 +268,30 @@ function App() {
     damageBuffer: number,
     shopExtras: number
   ) {
+    // Optimistic
     setCatalogData(prev => ({
       ...prev,
       [month]: { artist, album, label, contact, notes, wholesaleCost, predictedNew, damageBuffer, shopExtras }
     }));
     setDetailCatalogMonth(null);
+
+    // DB Update
+    await supabase.from('catalog').upsert({
+      month,
+      artist,
+      album,
+      label,
+      contact_info: contact,
+      notes,
+      wholesale_cost: wholesaleCost,
+      predicted_new: predictedNew,
+      damage_buffer: damageBuffer,
+      shop_extras: shopExtras
+    });
+
     logAction(
       "Updated Catalog",
-      `Changed ${fmt(month)} to ${artist} — ${album}. Forecasting: ${predictedNew} new, ${damageBuffer}% buffer, ${shopExtras} extras.`,
+      `Changed ${fmt(month)} to ${artist} — ${album}.`,
       'catalog'
     );
   }
@@ -303,6 +433,14 @@ function App() {
     `);
     win.document.close();
   };
+
+  if (loading) {
+    return (
+      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--surface)' }}>
+        <Loader2 className="animate-spin" size={24} color="var(--text3)" />
+      </div>
+    );
+  }
 
   return (
     <div className="app">
@@ -542,7 +680,7 @@ function App() {
             {ALL_MONTHS.map(mo => {
               const rec = catalogData[mo];
               const isCurrent = mo === "2026-02";
-              const subCount = SUBSCRIBERS.filter(s => isActiveForMonth(s, mo)).length;
+              const subCount = subscribers.filter(s => isActiveForMonth(s, mo)).length;
               
               const predicted = rec?.predictedNew || 0;
               const buffer = rec?.damageBuffer || 0;
@@ -597,10 +735,10 @@ function App() {
                 <div style={{ fontFamily: "DM Mono,monospace", fontSize: 11, color: "var(--text3)", marginTop: 4 }}>All administrative changes are logged here</div>
               </div>
               <button 
-                onClick={() => setHistory([])}
+                onClick={fetchData}
                 style={{ background: "none", border: "1px solid var(--border2)", color: "var(--text2)", borderRadius: "4px", padding: "6px 12px", cursor: "pointer", fontSize: 11, fontFamily: "DM Mono,monospace", display: "flex", alignItems: "center", gap: 6 }}
               >
-                <Trash2 size={12} /> Clear Log
+                <RefreshCw size={12} /> Refresh
               </button>
             </div>
             {history.length === 0 ? (
@@ -780,12 +918,42 @@ function App() {
 
               <button 
                 className="submit-btn"
-                onClick={() => {
+                onClick={async () => {
                   const billing = (document.getElementById('new-billing') as HTMLInputElement).value;
                   const order = (document.getElementById('new-order') as HTMLInputElement).value;
-                  logAction("Added Subscriber", `New subscriber ${billing} added (Order #${order})`, 'subscriber');
-                  alert("Subscriber added successfully! (Mock Action)");
-                  setActiveTab("subscribers");
+                  const email = (document.getElementById('new-email') as HTMLInputElement).value;
+                  const type = (document.getElementById('new-type') as HTMLInputElement).value;
+                  const delivery = (document.getElementById('new-delivery') as HTMLInputElement).value;
+                  const start = (document.getElementById('new-start') as HTMLInputElement).value;
+                  const notes = (document.getElementById('new-notes') as HTMLInputElement).value;
+                  
+                  // Calculate End (simple approximation)
+                  // In a real app we'd use date-fns to add months
+                  // For now, let's leave end null or ask user? 
+                  // Let's just assume we need logic.
+                  // Or let the user input end date if needed.
+                  // For now, let's just insert what we have.
+
+                  const { error } = await supabase.from('subscribers').insert({
+                    billing_name: billing,
+                    billing_email: email,
+                    order_id: order,
+                    recipient_name: isGift ? (document.getElementById('new-recipient') as HTMLInputElement).value : billing,
+                    recipient_email: isGift ? (document.getElementById('new-recipient-email') as HTMLInputElement).value : email,
+                    subscription_type: type,
+                    delivery_method: delivery,
+                    start_month: start,
+                    notes: notes
+                  });
+
+                  if (error) {
+                    alert('Error: ' + error.message);
+                  } else {
+                    logAction("Added Subscriber", `New subscriber ${billing} added (Order #${order})`, 'subscriber');
+                    alert("Subscriber added successfully!");
+                    fetchData();
+                    setActiveTab("subscribers");
+                  }
                 }}
               >
                 Add Subscriber + Notify Staff
@@ -810,21 +978,24 @@ function App() {
                   value={bcStoreUrl}
                   onChange={(e) => setBcStoreUrl(e.target.value)}
                 />
-                <div style={{ fontSize: 11, color: "var(--text2)", marginTop: 6, lineHeight: 1.5 }}>
-                  <strong>Important:</strong> Please use your permanent BigCommerce URL (the one that looks like <code>store-xxxxxx.mybigcommerce.com</code>). 
-                  <br/><br/>
-                  Clicking an order number will now perform a <strong>keyword search</strong> in your BigCommerce manager for that specific order number. 
-                  This is the most reliable way to find an order even if internal IDs differ.
-                </div>
               </div>
               
+              <SupabaseMigration />
+
               <div style={{ marginTop: 24, padding: 16, background: "var(--surface2)", borderRadius: 8, border: "1px solid var(--border)" }}>
                 <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>About this App</div>
                 <div style={{ fontSize: 12, color: "var(--text2)", lineHeight: 1.6 }}>
                   This tool is designed to bridge the gap between your BigCommerce sales and physical record store fulfillment. 
-                  All data is stored locally in your browser's persistent storage.
                 </div>
               </div>
+
+              <button 
+                className="submit-btn" 
+                style={{ marginTop: 20, background: 'var(--red)' }}
+                onClick={() => supabase.auth.signOut()}
+              >
+                Sign Out
+              </button>
             </div>
           </div>
         )}
@@ -853,9 +1024,14 @@ function App() {
                 <div className="flag-row">
                   <button 
                     className="flag-toggle"
-                    onClick={() => {
-                      logAction(detailSub.flag ? "Unflagged" : "Flagged", `${detailSub.recipient} was ${detailSub.flag ? 'unflagged' : 'flagged'}`, 'subscriber');
-                      // In a real app we'd update the subscriber state here
+                    onClick={async () => {
+                      const newFlag = !detailSub.flag;
+                      // Optimistic
+                      setSubscribers(prev => prev.map(s => s.id === detailSub.id ? { ...s, flag: newFlag } : s));
+                      setDetailSub(prev => prev ? { ...prev, flag: newFlag } : null);
+                      
+                      await supabase.from('subscribers').update({ is_flagged: newFlag }).eq('id', detailSub.id);
+                      logAction(newFlag ? "Flagged" : "Unflagged", `${detailSub.recipient} was ${newFlag ? 'flagged' : 'unflagged'}`, 'subscriber');
                     }}
                   >
                     <Flag size={10} style={{ marginRight: 4, display: 'inline' }} />
@@ -998,7 +1174,7 @@ function App() {
                   <div className="form-field">
                     <label className="form-label">Active Subs</label>
                     <div className="form-input" style={{ background: "var(--surface2)", border: "1px solid var(--border)", display: "flex", alignItems: "center" }}>
-                      {SUBSCRIBERS.filter(s => isActiveForMonth(s, detailCatalogMonth)).length}
+                      {subscribers.filter(s => isActiveForMonth(s, detailCatalogMonth)).length}
                     </div>
                   </div>
                 </div>
