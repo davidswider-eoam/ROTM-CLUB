@@ -1,0 +1,50 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fredoka:wght@400;500;600;700&display=swap');
+
+:root {
+  --bg: #fdfbf7; /* Paper/Cream white */
+  --surface: #ffffff;
+  --surface2: #f1f4f9;
+  --border: #e2e8f0;
+  --border2: #cbd5e1;
+  --green: #38a169;
+  --green-dim: #2f855a;
+  --amber: #d69e2e;
+  --red: #e53e3e;
+  --text: #1a202c;
+  --text2: #4a5568;
+  --text3: #244a7d; /* Logo Blue */
+  --font-display: 'Fredoka', sans-serif;
+  --font-mono: 'DM Mono', monospace;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-display);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border2);
+}
