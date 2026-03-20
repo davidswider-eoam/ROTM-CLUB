@@ -297,12 +297,28 @@ function App() {
   }
 
   const getBCOrderLink = (orderNum: string) => {
-    if (!bcStoreUrl || orderNum === "INSTORE") return null;
+    if (!bcStoreUrl || !orderNum || orderNum === "INSTORE") return null;
+    
+    // Clean up order number (remove # if present)
+    const cleanOrder = orderNum.toString().replace("#", "").trim();
+    if (!cleanOrder) return null;
+
     let cleanUrl = bcStoreUrl.trim().replace(/\/+$/, "");
+    
+    // If it's a full URL like store-xyz.mybigcommerce.com/manage/dashboard
+    // Extract the base domain + /manage
+    if (cleanUrl.includes(".mybigcommerce.com")) {
+      const match = cleanUrl.match(/^(https?:\/\/[^\/]+)/);
+      if (match) {
+        cleanUrl = `${match[1]}/manage`;
+      }
+    }
+
     if (!cleanUrl.includes("/manage")) {
       cleanUrl = `${cleanUrl}/manage`;
     }
-    return `${cleanUrl}/orders?keywords=${orderNum}`;
+    
+    return `${cleanUrl}/orders?keywords=${cleanOrder}`;
   };
 
   const OrderLink = ({ order }: { order: string }) => {
@@ -978,6 +994,10 @@ function App() {
                   value={bcStoreUrl}
                   onChange={(e) => setBcStoreUrl(e.target.value)}
                 />
+                <div style={{ fontSize: 11, color: "var(--text2)", marginTop: 6, lineHeight: 1.5 }}>
+                  <strong>Important:</strong> Enter your BigCommerce store URL. 
+                  Order numbers will link to your manager search.
+                </div>
               </div>
               
               <SupabaseMigration />
