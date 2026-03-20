@@ -28,7 +28,7 @@ import './App.css';
 import { MONTHS } from './constants';
 import { MUSIC_QUOTES } from './quotes';
 import type { Subscriber, Catalog, HistoryEntry } from './types';
-import { isActiveForMonth, isNewThisMonth, isLapsingThisMonth, statusFor, fmt } from './utils';
+import { isActiveForMonth, isNewThisMonth, isLapsingThisMonth, statusFor, fmt, getCurrentMonth } from './utils';
 import logo from './assets/logo.png';
 import { supabase } from './supabase';
 import SupabaseMigration from './SupabaseMigration';
@@ -51,7 +51,7 @@ function App() {
 
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const [subTab, setSubTab] = useState<SubTab>("all");
-  const [selectedMonth, setSelectedMonth] = useState("2026-02");
+  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth());
   const [filter, setFilter] = useState("all");
   const [searchQ, setSearchQ] = useState("");
   const [showSearch, setShowSearch] = useState(false);
@@ -777,7 +777,7 @@ function App() {
             </div>
             {dbMonths.map(mo => {
               const rec = catalogData[mo];
-              const isCurrent = mo === "2026-02";
+              const isCurrent = mo === getCurrentMonth();
               const subCount = subscribers.filter(s => isActiveForMonth(s, mo)).length;
               
               const predicted = rec?.predictedNew || 0;
