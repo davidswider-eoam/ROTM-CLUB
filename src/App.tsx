@@ -39,7 +39,7 @@ function cn(...inputs: ClassValue[]) {
 }
 
 type Tab = 'dashboard' | 'subscribers' | 'catalog' | 'contacts' | 'add' | 'history' | 'settings';
-type SubTab = 'all' | 'term' | 'monthly';
+type SubTab = 'all' | 'term' | 'monthly' | 'flagged';
 
 
 function App() {
@@ -246,6 +246,7 @@ function App() {
 
   const displaySubscribers = useMemo(() => {
     return subscribers.filter(s => {
+      if (subTab === 'flagged') return s.flag;
       if (subTab === 'monthly') return s.type === 'monthly';
       if (subTab === 'term') return s.type !== 'monthly';
       return true;
@@ -704,7 +705,8 @@ function App() {
                 {[
                   { id: 'all', label: 'All', icon: <Users size={12} /> },
                   { id: 'term', label: 'Fixed Term', icon: <Calendar size={12} /> },
-                  { id: 'monthly', label: 'Monthly Watch', icon: <RefreshCw size={12} /> }
+                  { id: 'monthly', label: 'Monthly Watch', icon: <RefreshCw size={12} /> },
+                  { id: 'flagged', label: 'Flagged', icon: <Flag size={12} /> }
                 ].map(tab => (
                   <button 
                     key={tab.id}
@@ -1120,31 +1122,64 @@ function App() {
               <button className="close-btn" onClick={() => setDetailSub(null)}><X size={14} /></button>
             </div>
 
-            {detailSub.notes && (
-              <div className="detail-section">
-                <div className="detail-section-label">Notes</div>
-                <div className="notes-box" style={detailSub.flag ? { borderColor: "var(--amber)" } : {}}>
-                  {detailSub.notes}
-                </div>
-                <div className="flag-row">
-                  <button 
-                    className="flag-toggle"
-                    onClick={async () => {
-                      const newFlag = !detailSub.flag;
-                      // Optimistic
-                      setSubscribers(prev => prev.map(s => s.id === detailSub.id ? { ...s, flag: newFlag } : s));
-                      setDetailSub(prev => prev ? { ...prev, flag: newFlag } : null);
-                      
-                      await supabase.from('subscribers').update({ is_flagged: newFlag }).eq('id', detailSub.id);
-                      logAction(newFlag ? "Flagged" : "Unflagged", `${detailSub.recipient} was ${newFlag ? 'flagged' : 'unflagged'}`, 'subscriber');
-                    }}
-                  >
-                    <Flag size={10} style={{ marginRight: 4, display: 'inline' }} />
-                    {detailSub.flag ? "Flagged" : "Flag for Attention"}
-                  </button>
-                </div>
+            <div className="detail-section">
+              <div className="detail-section-label">Notes & Attention</div>
+              <textarea 
+                className="form-input" 
+                style={{ minHeight: 80, resize: 'vertical', fontSize: 11, fontFamily: 'var(--font-mono)', marginBottom: 12, width: '100%', boxSizing: 'border-box' }}
+                defaultValue={detailSub.notes || ""} 
+                id={`edit-sub-notes-${detailSub.id}`}
+                placeholder="Add special instructions, flag reasons, etc."
+              />
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button 
+                  className="submit-btn"
+                  style={{ flex: 1, padding: '6px 12px', fontSize: 11 }}
+                  onClick={async () => {
+                    const newNotes = (document.getElementById(`edit-sub-notes-${detailSub.id}`) as HTMLTextAreaElement).value;
+                    // Optimistic
+                    setSubscribers(prev => prev.map(s => s.id === detailSub.id ? { ...s, notes: newNotes } : s));
+                    setDetailSub(prev => prev ? { ...prev, notes: newNotes } : null);
+                    
+                    await supabase.from('subscribers').update({ notes: newNotes }).eq('id', detailSub.id);
+                    logAction("Updated Notes", `Notes updated for ${detailSub.recipient}`, 'subscriber');
+                    alert("Notes saved.");
+                  }}
+                >
+                  Save Notes
+                </button>
+                <button 
+                  className={cn("flag-toggle", detailSub.flag && "active")}
+                  style={{ 
+                    flex: 1, 
+                    justifyContent: 'center', 
+                    background: detailSub.flag ? 'var(--amber)' : 'none',
+                    color: detailSub.flag ? '#fff' : 'var(--amber)',
+                    borderColor: 'var(--amber)',
+                    borderStyle: 'solid',
+                    borderWidth: 1,
+                    borderRadius: 4,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    cursor: 'pointer'
+                  }}
+                  onClick={async () => {
+                    const newFlag = !detailSub.flag;
+                    // Optimistic
+                    setSubscribers(prev => prev.map(s => s.id === detailSub.id ? { ...s, flag: newFlag } : s));
+                    setDetailSub(prev => prev ? { ...prev, flag: newFlag } : null);
+                    
+                    await supabase.from('subscribers').update({ is_flagged: newFlag }).eq('id', detailSub.id);
+                    logAction(newFlag ? "Flagged" : "Unflagged", `${detailSub.recipient} was ${newFlag ? 'flagged' : 'unflagged'}`, 'subscriber');
+                  }}
+                >
+                  <Flag size={11} style={{ marginRight: 6 }} fill={detailSub.flag ? "#fff" : "none"} />
+                  {detailSub.flag ? "Flagged" : "Flag for Attention"}
+                </button>
               </div>
-            )}
+            </div>
 
             <div className="detail-section">
               <div className="detail-section-label">Subscription</div>
