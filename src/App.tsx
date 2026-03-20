@@ -12,6 +12,7 @@ import {
   Package,
   Save,
   History as HistoryIcon,
+  Trash2,
   Printer,
   Settings,
   ExternalLink,
@@ -40,13 +41,14 @@ function cn(...inputs: ClassValue[]) {
 type Tab = 'dashboard' | 'subscribers' | 'catalog' | 'contacts' | 'add' | 'history' | 'settings';
 type SubTab = 'all' | 'term' | 'monthly';
 
-const ALL_MONTHS = ["2025-11", "2025-12", "2026-01", "2026-02", "2026-03", "2026-04"];
+const ALL_MONTHS = MONTHS;
 
 function App() {
   const [loading, setLoading] = useState(true);
   const [subscribers, setSubscribers] = useState<Subscriber[]>([]);
   const [catalogData, setCatalogData] = useState<Catalog>({});
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [dbMonths, setDbMonths] = useState<string[]>(MONTHS);
 
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const [subTab, setSubTab] = useState<SubTab>("all");
@@ -100,7 +102,9 @@ function App() {
     const { data: catData } = await supabase.from('catalog').select('*');
     if (catData) {
       const newCatalog: Catalog = {};
+      const fetchedMonths: string[] = [];
       catData.forEach(c => {
+        fetchedMonths.push(c.month);
         newCatalog[c.month] = {
           artist: c.artist,
           album: c.album,
@@ -113,6 +117,10 @@ function App() {
           shopExtras: c.shop_extras
         };
       });
+      
+      // Merge with default months and sort
+      const allUniqueMonths = Array.from(new Set([...MONTHS, ...fetchedMonths])).sort();
+      setDbMonths(allUniqueMonths);
       setCatalogData(newCatalog);
     }
 
@@ -142,6 +150,48 @@ function App() {
   }, []);
 
   const m = selectedMonth;
+
+  // New month helper
+  function getNextMonthString(lastMonth: string) {
+    const [y, m] = lastMonth.split('-').map(Number);
+    let nextY = y;
+    let nextM = m + 1;
+    if (nextM > 12) {
+      nextM = 1;
+      nextY++;
+    }
+    return `${nextY}-${nextM.toString().padStart(2, '0')}`;
+  }
+
+  async function addMonth() {
+    const lastMonth = dbMonths[dbMonths.length - 1];
+    const newMonth = getNextMonthString(lastMonth);
+    
+    if (!confirm(`Add ${fmt(newMonth)} to the catalog?`)) return;
+
+    // Optimistic update
+    setDbMonths(prev => [...prev, newMonth].sort());
+    setCatalogData(prev => ({
+      ...prev,
+      [newMonth]: { artist: "TBD", album: "TBD", label: "TBD", wholesaleCost: 0 }
+    }));
+
+    const { error } = await supabase.from('catalog').insert({
+      month: newMonth,
+      artist: 'TBD',
+      album: 'TBD',
+      label: 'TBD',
+      wholesale_cost: 0
+    });
+
+    if (error) {
+      alert("Error adding month: " + error.message);
+      fetchData(); // Rollback
+    } else {
+      logAction("Added Month", `New month ${fmt(newMonth)} added to catalog.`, 'catalog');
+      setSelectedMonth(newMonth);
+    }
+  }
   
   // Derived State
   const activeSubs = useMemo(() => subscribers.filter(s => isActiveForMonth(s, m)), [subscribers, m]);
@@ -173,8 +223,10 @@ function App() {
     return true;
   }), [activeSubs, filter, shipped]);
 
-  const unshipped = useMemo(() => filteredSubs.filter(s => !shipped.has(s.id)), [filteredSubs, shipped]);
-  const shippedList = useMemo(() => filteredSubs.filter(s => shipped.has(s.id)), [filteredSubs, shipped]);
+  const toShip = useMemo(() => filteredSubs.filter(s => !shipped.has(s.id) && s.delivery === 'ship'), [filteredSubs, shipped]);
+  const toPickUp = useMemo(() => filteredSubs.filter(s => !shipped.has(s.id) && s.delivery === 'pickup'), [filteredSubs, shipped]);
+  const shippedList = useMemo(() => filteredSubs.filter(s => shipped.has(s.id) && s.delivery === 'ship'), [filteredSubs, shipped]);
+  const pickedUpList = useMemo(() => filteredSubs.filter(s => shipped.has(s.id) && s.delivery === 'pickup'), [filteredSubs, shipped]);
 
   const searchResults = useMemo(() => searchQ.length > 1
     ? subscribers.filter(s =>
@@ -219,6 +271,19 @@ function App() {
       staff_member: 'Staff', // ideally get from auth user
       category
     });
+  }
+
+  async function deleteSubscriber(id: string) {
+    if (!confirm("Are you sure you want to permanently remove this subscriber? This cannot be undone.")) return;
+    
+    const { error } = await supabase.from('subscribers').delete().eq('id', id);
+    if (error) {
+      alert("Error deleting: " + error.message);
+    } else {
+      setSubscribers(prev => prev.filter(s => s.id !== id));
+      setDetailSub(null);
+      logAction("Deleted Subscriber", `Subscriber removed from database.`, 'subscriber');
+    }
   }
 
   async function toggleShip(id: string) {
@@ -530,7 +595,7 @@ function App() {
         {activeTab === "dashboard" && (
           <>
             <div className="month-bar">
-              {MONTHS.map(mo => (
+              {dbMonths.map(mo => (
                 <button 
                   key={mo} 
                   className={cn("month-btn", selectedMonth === mo && "active")} 
@@ -539,6 +604,9 @@ function App() {
                   {fmt(mo)}
                 </button>
               ))}
+              <button className="month-btn" onClick={addMonth} title="Add New Month">
+                <Plus size={14} />
+              </button>
               {catalogData[m] && (
                 <div className="album-pill">
                   <Disc size={12} strokeWidth={2} />
@@ -597,16 +665,28 @@ function App() {
               ))}
             </div>
 
-            {unshipped.length > 0 && (
+            {toShip.length > 0 && (
               <>
-                <div className="section-divider">To ship — {unshipped.length}</div>
-                {unshipped.map(s => <SubRow key={s.id} sub={s} />)}
+                <div className="section-divider">To Ship — {toShip.length}</div>
+                {toShip.map(s => <SubRow key={s.id} sub={s} />)}
+              </>
+            )}
+            {toPickUp.length > 0 && (
+              <>
+                <div className="section-divider">To Pick Up — {toPickUp.length}</div>
+                {toPickUp.map(s => <SubRow key={s.id} sub={s} />)}
               </>
             )}
             {shippedList.length > 0 && (
               <>
                 <div className="section-divider">Shipped — {shippedList.length}</div>
                 {shippedList.map(s => <SubRow key={s.id} sub={s} />)}
+              </>
+            )}
+            {pickedUpList.length > 0 && (
+              <>
+                <div className="section-divider">Picked Up — {pickedUpList.length}</div>
+                {pickedUpList.map(s => <SubRow key={s.id} sub={s} />)}
               </>
             )}
           </>
@@ -693,7 +773,7 @@ function App() {
             <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--border)" }}>
               <div style={{ fontWeight: 800, fontSize: 16 }}>Monthly Catalog</div>
             </div>
-            {ALL_MONTHS.map(mo => {
+            {dbMonths.map(mo => {
               const rec = catalogData[mo];
               const isCurrent = mo === "2026-02";
               const subCount = subscribers.filter(s => isActiveForMonth(s, mo)).length;
@@ -805,7 +885,9 @@ function App() {
               <div>
                 <div style={{ fontFamily: "DM Mono,monospace", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text3)", marginBottom: 6 }}>Month</div>
                 <select className="form-select" style={{ width: 160 }} value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}>
-                  {MONTHS.map(mo => <option key={mo} value={mo}>{fmt(mo)}</option>)}
+                  {dbMonths.map(mo => 
+                  <option key={mo} value={mo}>{fmt(mo)}</option>
+                )}
                 </select>
               </div>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -1082,7 +1164,7 @@ function App() {
             <div className="detail-section">
               <div className="detail-section-label">Timeline</div>
               <div className="timeline">
-                {ALL_MONTHS.map(mo => {
+                {dbMonths.map(mo => {
                   const isActive = isActiveForMonth(detailSub, mo);
                   const isCurrent = mo === selectedMonth;
                   return (
@@ -1096,7 +1178,7 @@ function App() {
 
             <div className="detail-section">
               <div className="detail-section-label">Fulfillment History</div>
-              {MONTHS.filter(mo => isActiveForMonth(detailSub, mo)).map(mo => (
+              {dbMonths.filter(mo => isActiveForMonth(detailSub, mo)).map(mo => (
                 <div key={mo} className="field-row">
                   <span className="field-key">{fmt(mo)}</span>
                   <span className="field-val" style={{ color: shipped.has(detailSub.id) ? "var(--green)" : "var(--text3)" }}>
@@ -1114,14 +1196,23 @@ function App() {
               {shipped.has(detailSub.id) ? (
                 <>
                   <Check size={14} style={{ marginRight: 6, display: 'inline' }} />
-                  Shipped for {fmt(selectedMonth)}
+                  {detailSub.delivery === 'pickup' ? 'Picked Up' : 'Shipped'} for {fmt(selectedMonth)}
                 </>
               ) : (
                 <>
                   <Package size={14} style={{ marginRight: 6, display: 'inline' }} />
-                  Mark Shipped for {fmt(selectedMonth)}
+                  Mark {detailSub.delivery === 'pickup' ? 'Picked Up' : 'Shipped'} for {fmt(selectedMonth)}
                 </>
               )}
+            </button>
+
+            <button 
+              className="submit-btn"
+              style={{ marginTop: 12, background: "none", border: "1px solid #fee2e2", color: "var(--red)", width: "100%" }}
+              onClick={() => deleteSubscriber(detailSub.id)}
+            >
+              <Trash2 size={14} style={{ marginRight: 6, display: 'inline' }} />
+              Delete Subscriber
             </button>
           </>
         )}

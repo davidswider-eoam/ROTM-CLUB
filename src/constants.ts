@@ -1,6 +1,6 @@
 import type { Subscriber, Catalog } from './types';
 
-export const MONTHS = ["2025-11", "2025-12", "2026-01", "2026-02", "2026-03", "2026-04"];
+export const MONTHS = ["2025-11", "2025-12", "2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06"];
 
 export const CATALOG: Catalog = {
   "2025-11": { artist: "Unknown Artist", album: "November Record", label: "TBD", wholesaleCost: 0 },
