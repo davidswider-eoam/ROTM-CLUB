@@ -41,7 +41,6 @@ function cn(...inputs: ClassValue[]) {
 type Tab = 'dashboard' | 'subscribers' | 'catalog' | 'contacts' | 'add' | 'history' | 'settings';
 type SubTab = 'all' | 'term' | 'monthly';
 
-const ALL_MONTHS = MONTHS;
 
 function App() {
   const [loading, setLoading] = useState(true);
