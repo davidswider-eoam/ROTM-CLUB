@@ -31,6 +31,7 @@ create table catalog (
   predicted_new integer default 0,
   damage_buffer integer default 5,
   shop_extras integer default 0,
+  jxn_subs integer default 0,
   updated_at timestamptz default now()
 );
 

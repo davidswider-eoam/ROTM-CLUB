@@ -28,6 +28,7 @@ export interface CatalogEntry {
   predictedNew?: number;
   damageBuffer?: number; // percentage
   shopExtras?: number;
+  jxnSubs?: number;
 }
 
 export type Catalog = Record<string, CatalogEntry>;

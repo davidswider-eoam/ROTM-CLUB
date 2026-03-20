@@ -113,7 +113,8 @@ function App() {
           wholesaleCost: c.wholesale_cost,
           predictedNew: c.predicted_new,
           damageBuffer: c.damage_buffer,
-          shopExtras: c.shop_extras
+          shopExtras: c.shop_extras,
+          jxnSubs: c.jxn_subs
         };
       });
       
@@ -330,12 +331,13 @@ function App() {
     wholesaleCost: number,
     predictedNew: number,
     damageBuffer: number,
-    shopExtras: number
+    shopExtras: number,
+    jxnSubs: number
   ) {
     // Optimistic
     setCatalogData(prev => ({
       ...prev,
-      [month]: { artist, album, label, contact, notes, wholesaleCost, predictedNew, damageBuffer, shopExtras }
+      [month]: { artist, album, label, contact, notes, wholesaleCost, predictedNew, damageBuffer, shopExtras, jxnSubs }
     }));
     setDetailCatalogMonth(null);
 
@@ -350,7 +352,8 @@ function App() {
       wholesale_cost: wholesaleCost,
       predicted_new: predictedNew,
       damage_buffer: damageBuffer,
-      shop_extras: shopExtras
+      shop_extras: shopExtras,
+      jxn_subs: jxnSubs
     });
 
     logAction(
@@ -780,7 +783,8 @@ function App() {
               const predicted = rec?.predictedNew || 0;
               const buffer = rec?.damageBuffer || 0;
               const extras = rec?.shopExtras || 0;
-              const suggestedOrder = Math.ceil((subCount + predicted) * (1 + buffer / 100)) + extras;
+              const jxn = rec?.jxnSubs || 0;
+              const suggestedOrder = Math.ceil((subCount + predicted) * (1 + buffer / 100)) + extras + jxn;
               const totalCost = rec && rec.wholesaleCost ? rec.wholesaleCost * suggestedOrder : 0;
               
               return (
@@ -1319,6 +1323,15 @@ function App() {
                     id="edit-extras"
                   />
                 </div>
+                <div className="form-field">
+                  <label className="form-label">JXN Subs</label>
+                  <input 
+                    type="number"
+                    className="form-input" 
+                    defaultValue={catalogData[detailCatalogMonth]?.jxnSubs || 0} 
+                    id="edit-jxn"
+                  />
+                </div>
 
                 <div className="form-field">
                   <label className="form-label">Notes</label>
@@ -1345,7 +1358,8 @@ function App() {
                 const predicted = parseInt((document.getElementById('edit-predicted') as HTMLInputElement).value) || 0;
                 const buffer = parseInt((document.getElementById('edit-buffer') as HTMLInputElement).value) || 0;
                 const extras = parseInt((document.getElementById('edit-extras') as HTMLInputElement).value) || 0;
-                updateCatalog(detailCatalogMonth, artist, album, label, contact, notes, cost, predicted, buffer, extras);
+                const jxn = parseInt((document.getElementById('edit-jxn') as HTMLInputElement).value) || 0;
+                updateCatalog(detailCatalogMonth, artist, album, label, contact, notes, cost, predicted, buffer, extras, jxn);
               }}
             >
               <Save size={14} style={{ marginRight: 6, display: 'inline' }} />

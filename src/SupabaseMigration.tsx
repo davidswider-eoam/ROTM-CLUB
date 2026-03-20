@@ -51,7 +51,8 @@ export default function SupabaseMigration() {
         wholesale_cost: item.wholesaleCost,
         predicted_new: item.predictedNew,
         damage_buffer: item.damageBuffer,
-        shop_extras: item.shopExtras
+        shop_extras: item.shopExtras,
+        jxn_subs: item.jxnSubs || 0
       }));
 
       const { error: catError } = await supabase.from('catalog').upsert(catalogItems);
