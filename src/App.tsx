@@ -93,6 +93,7 @@ function App() {
         end: s.end_month,
         notes: s.notes,
         flag: s.is_flagged,
+        signupDate: s.signup_date,
         shipped_months: s.shipped_months || []
       })));
     }
@@ -756,6 +757,11 @@ function App() {
                   </div>
                   <div className="sub-meta">
                     {s.flag && <span className="badge flag">⚑</span>}
+                    {isMonthly && s.signupDate && (
+                      <span className="badge" style={{ background: "#f0fdf4", color: "var(--green)", border: "1px solid #dcfce7" }}>
+                        Day {new Date(s.signupDate).getDate()}
+                      </span>
+                    )}
                     {isMonthly && <span className="badge" style={{ background: "#eef2ff", color: "var(--text3)", border: "1px solid var(--border)" }}>Watch</span>}
                     <span className={cn("badge", s.type.replace("-", ""))} style={{ background: "var(--surface2)", color: "var(--text2)" }}>{s.type}</span>
                     <span style={{ fontFamily: "DM Mono,monospace", fontSize: 10, color: "var(--text3)" }}>{fmt(s.start)} → {fmt(s.end)}</span>
@@ -1026,6 +1032,11 @@ function App() {
                 <input className="form-input" id="new-notes" placeholder="Any special instructions…" />
               </div>
 
+              <div className="form-field">
+                <label className="form-label">Signup/Charge Date (Especially for Monthly)</label>
+                <input className="form-input" type="date" id="new-signup-date" />
+              </div>
+
               <button 
                 className="submit-btn"
                 onClick={async () => {
@@ -1036,6 +1047,7 @@ function App() {
                   const delivery = (document.getElementById('new-delivery') as HTMLInputElement).value;
                   const start = (document.getElementById('new-start') as HTMLInputElement).value;
                   const notes = (document.getElementById('new-notes') as HTMLInputElement).value;
+                  const signupDate = (document.getElementById('new-signup-date') as HTMLInputElement).value;
                   
                   // Calculate End (simple approximation)
                   // In a real app we'd use date-fns to add months
@@ -1053,7 +1065,8 @@ function App() {
                     subscription_type: type,
                     delivery_method: delivery,
                     start_month: start,
-                    notes: notes
+                    notes: notes,
+                    signup_date: signupDate || null
                   });
 
                   if (error) {
@@ -1198,6 +1211,8 @@ function App() {
                 ["Delivery", detailSub.delivery],
                 ["Start", fmt(detailSub.start)],
                 ["End", fmt(detailSub.end)],
+                ["Signup Date", detailSub.signupDate || "—"],
+                ...(detailSub.type === 'monthly' && detailSub.signupDate ? [["Monthly Billing Day", `Day ${new Date(detailSub.signupDate).getDate()}`]] : []),
               ].map(([k, v]) => (
                 <div key={k} className="field-row">
                   <span className="field-key">{k}</span>

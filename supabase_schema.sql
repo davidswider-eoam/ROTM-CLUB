@@ -13,11 +13,12 @@ create table subscribers (
   delivery_method text not null,   -- 'ship', 'pickup'
   start_month text not null,       -- YYYY-MM
   end_month text,                  -- YYYY-MM
-  notes text,
-  is_flagged boolean default false,
-  shipped_months text[] default '{}', -- Array of 'YYYY-MM' strings
-  created_at timestamptz default now()
-);
+  notes: text,
+  is_flagged: boolean default false,
+  signup_date: date,
+  shipped_months: text[] default '{}', -- Array of 'YYYY-MM' strings
+  created_at: timestamptz default now()
+  );
 
 -- Catalog Table
 create table catalog (
