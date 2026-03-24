@@ -323,6 +323,56 @@ function App() {
     }
   }
 
+  async function updateSubscriber(
+    id: string, 
+    billing: string, 
+    billingEmail: string, 
+    recipient: string, 
+    recipientEmail: string, 
+    order: string, 
+    type: string, 
+    delivery: string, 
+    start: string, 
+    end: string | null, 
+    signupDate: string | null
+  ) {
+    // Optimistic
+    setSubscribers(prev => prev.map(s => s.id === id ? { 
+      ...s, 
+      billing, 
+      billingEmail, 
+      recipient, 
+      recipientEmail, 
+      order, 
+      type: type as any, 
+      delivery: delivery as any, 
+      start, 
+      end, 
+      signupDate: signupDate || undefined 
+    } : s));
+
+    const { error } = await supabase.from('subscribers').update({
+      billing_name: billing,
+      billing_email: billingEmail,
+      recipient_name: recipient,
+      recipient_email: recipientEmail,
+      order_id: order,
+      subscription_type: type,
+      delivery_method: delivery,
+      start_month: start,
+      end_month: end,
+      signup_date: signupDate
+    }).eq('id', id);
+
+    if (error) {
+      alert("Error saving: " + error.message);
+      fetchData();
+    } else {
+      logAction("Updated Subscriber", `Details updated for ${recipient}`, 'subscriber');
+      alert("Subscriber updated successfully!");
+    }
+  }
+
   async function updateCatalog(
     month: string, 
     artist: string, 
@@ -1202,23 +1252,89 @@ function App() {
             </div>
 
             <div className="detail-section">
-              <div className="detail-section-label">Subscription</div>
-              {[
-                ["Billing Name", detailSub.billing],
-                ["Billing Email", detailSub.billingEmail || "—"],
-                ["Recipient", detailSub.recipient],
-                ["Type", detailSub.type],
-                ["Delivery", detailSub.delivery],
-                ["Start", fmt(detailSub.start)],
-                ["End", fmt(detailSub.end)],
-                ["Signup Date", detailSub.signupDate || "—"],
-                ...(detailSub.type === 'monthly' && detailSub.signupDate ? [["Monthly Billing Day", `Day ${new Date(detailSub.signupDate).getDate()}`]] : []),
-              ].map(([k, v]) => (
-                <div key={k} className="field-row">
-                  <span className="field-key">{k}</span>
-                  <span className="field-val">{v}</span>
+              <div className="detail-section-label">Subscription Details</div>
+              <div className="form-body" style={{ padding: 0 }}>
+                <div className="form-row">
+                  <div className="form-field">
+                    <label className="form-label">Billing Name</label>
+                    <input className="form-input" id="edit-sub-billing" defaultValue={detailSub.billing} />
+                  </div>
+                  <div className="form-field">
+                    <label className="form-label">Billing Email</label>
+                    <input className="form-input" id="edit-sub-billingEmail" defaultValue={detailSub.billingEmail || ""} />
+                  </div>
                 </div>
-              ))}
+                <div className="form-row">
+                  <div className="form-field">
+                    <label className="form-label">Recipient Name</label>
+                    <input className="form-input" id="edit-sub-recipient" defaultValue={detailSub.recipient} />
+                  </div>
+                  <div className="form-field">
+                    <label className="form-label">Recipient Email</label>
+                    <input className="form-input" id="edit-sub-recipientEmail" defaultValue={detailSub.recipientEmail || ""} />
+                  </div>
+                </div>
+                <div className="form-row">
+                  <div className="form-field">
+                    <label className="form-label">Order #</label>
+                    <input className="form-input" id="edit-sub-order" defaultValue={detailSub.order} />
+                  </div>
+                  <div className="form-field">
+                    <label className="form-label">Type</label>
+                    <select className="form-select" id="edit-sub-type" defaultValue={detailSub.type}>
+                      <option>3-month</option>
+                      <option>6-month</option>
+                      <option>12-month</option>
+                      <option>monthly</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="form-row">
+                  <div className="form-field">
+                    <label className="form-label">Delivery</label>
+                    <select className="form-select" id="edit-sub-delivery" defaultValue={detailSub.delivery}>
+                      <option>ship</option>
+                      <option>pickup</option>
+                    </select>
+                  </div>
+                  <div className="form-field">
+                    <label className="form-label">Signup Date</label>
+                    <input className="form-input" type="date" id="edit-sub-signupDate" defaultValue={detailSub.signupDate || ""} />
+                  </div>
+                </div>
+                <div className="form-row">
+                  <div className="form-field">
+                    <label className="form-label">Start Month (YYYY-MM)</label>
+                    <input className="form-input" id="edit-sub-start" defaultValue={detailSub.start} />
+                  </div>
+                  <div className="form-field">
+                    <label className="form-label">End Month (YYYY-MM)</label>
+                    <input className="form-input" id="edit-sub-end" defaultValue={detailSub.end || ""} />
+                  </div>
+                </div>
+              </div>
+
+              <button 
+                className="ship-btn"
+                style={{ marginTop: 16, background: 'var(--text3)' }}
+                onClick={() => {
+                  const billing = (document.getElementById('edit-sub-billing') as HTMLInputElement).value;
+                  const billingEmail = (document.getElementById('edit-sub-billingEmail') as HTMLInputElement).value;
+                  const recipient = (document.getElementById('edit-sub-recipient') as HTMLInputElement).value;
+                  const recipientEmail = (document.getElementById('edit-sub-recipientEmail') as HTMLInputElement).value;
+                  const order = (document.getElementById('edit-sub-order') as HTMLInputElement).value;
+                  const type = (document.getElementById('edit-sub-type') as HTMLSelectElement).value;
+                  const delivery = (document.getElementById('edit-sub-delivery') as HTMLSelectElement).value;
+                  const start = (document.getElementById('edit-sub-start') as HTMLInputElement).value;
+                  const end = (document.getElementById('edit-sub-end') as HTMLInputElement).value || null;
+                  const signupDate = (document.getElementById('edit-sub-signupDate') as HTMLInputElement).value || null;
+                  
+                  updateSubscriber(detailSub.id, billing, billingEmail, recipient, recipientEmail, order, type, delivery, start, end, signupDate);
+                }}
+              >
+                <Save size={14} style={{ marginRight: 6, display: 'inline' }} />
+                Save Subscriber Changes
+              </button>
             </div>
 
             <div className="detail-section">
