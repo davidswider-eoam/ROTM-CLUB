@@ -880,7 +880,10 @@ function App() {
                           <span style={{ fontSize: 11, color: "var(--text3)", fontWeight: 600 }}>Suggested: {suggestedOrder} units</span>
                           <span style={{ fontSize: 10, color: "var(--text2)" }}>(${rec.wholesaleCost?.toFixed(2)} × {suggestedOrder})</span>
                           <span style={{ fontWeight: 800, fontSize: 14, color: "var(--text3)", marginTop: 2 }}>
-                            Est. Total: ${totalCost.toFixed(2)}
+                            Wholesale Total: ${totalCost.toFixed(2)}
+                          </span>
+                          <span style={{ fontWeight: 600, fontSize: 11, color: "var(--green)", marginTop: 2 }}>
+                            Est. Retail Total: ${(totalCost / 0.6).toFixed(2)}
                           </span>
                         </div>
                       </div>
