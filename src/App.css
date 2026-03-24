@@ -537,6 +537,16 @@
   font-weight: 600;
 }
 
+.tl-month.shipped {
+  background: var(--green);
+  color: #ffffff;
+  border-color: var(--green);
+}
+
+.tl-month.shipped.active {
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--green);
+}
+
 .tl-month.current {
   border-color: var(--text2);
   color: var(--text);

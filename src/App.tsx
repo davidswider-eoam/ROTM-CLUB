@@ -288,22 +288,26 @@ function App() {
     }
   }
 
-  async function toggleShip(id: string) {
+  async function toggleShip(id: string, monthOverride?: string) {
+    const targetMonth = monthOverride || m;
     const sub = subscribers.find(s => s.id === id);
     if (!sub) return;
 
     const currentMonths = sub.shipped_months || [];
-    const isShipped = currentMonths.includes(m);
+    const isShipped = currentMonths.includes(targetMonth);
     
     let newMonths;
     if (isShipped) {
-      newMonths = currentMonths.filter(mo => mo !== m);
+      newMonths = currentMonths.filter(mo => mo !== targetMonth);
     } else {
-      newMonths = [...currentMonths, m];
+      newMonths = [...currentMonths, targetMonth];
     }
 
     // Optimistic update
     setSubscribers(prev => prev.map(s => s.id === id ? { ...s, shipped_months: newMonths } : s));
+    if (detailSub && detailSub.id === id) {
+      setDetailSub({ ...detailSub, shipped_months: newMonths });
+    }
 
     // DB Update
     const { error } = await supabase
@@ -313,11 +317,11 @@ function App() {
     
     if (error) {
       console.error("Error updating shipping:", error);
-      // Revert if needed (omitted for brevity)
+      fetchData(); // Rollback
     } else {
       logAction(
         isShipped ? "Unmarked Shipping" : "Marked Shipped",
-        `${sub?.recipient} marked as ${!isShipped ? 'shipped' : 'unshipped'} for ${fmt(m)}`,
+        `${sub?.recipient} marked as ${!isShipped ? 'shipped' : 'unshipped'} for ${fmt(targetMonth)}`,
         'shipping'
       );
     }
@@ -1343,8 +1347,15 @@ function App() {
                 {dbMonths.map(mo => {
                   const isActive = isActiveForMonth(detailSub, mo);
                   const isCurrent = mo === selectedMonth;
+                  const isMoShipped = detailSub.shipped_months?.includes(mo);
                   return (
-                    <div key={mo} className={cn("tl-month", isActive && "active", !isActive && isCurrent && "current")}>
+                    <div 
+                      key={mo} 
+                      className={cn("tl-month", isActive && "active", !isActive && isCurrent && "current", isMoShipped && "shipped")}
+                      onClick={() => toggleShip(detailSub.id, mo)}
+                      style={{ cursor: 'pointer' }}
+                      title={isMoShipped ? "Mark as Unshipped" : "Mark as Shipped"}
+                    >
                       {fmt(mo)}
                     </div>
                   );
@@ -1354,22 +1365,36 @@ function App() {
 
             <div className="detail-section">
               <div className="detail-section-label">Fulfillment History</div>
-              {dbMonths.filter(mo => isActiveForMonth(detailSub, mo)).map(mo => (
-                <div key={mo} className="field-row">
-                  <span className="field-key">{fmt(mo)}</span>
-                  <span className="field-val" style={{ color: shipped.has(detailSub.id) ? "var(--green)" : "var(--text3)" }}>
-                    {shipped.has(detailSub.id) ? "✓ Shipped" : "Not yet shipped"}
-                  </span>
-                </div>
-              ))}
+              {dbMonths.filter(mo => isActiveForMonth(detailSub, mo)).map(mo => {
+                const isMoShipped = detailSub.shipped_months?.includes(mo);
+                return (
+                  <div key={mo} className="field-row">
+                    <span className="field-key">{fmt(mo)}</span>
+                    <button 
+                      style={{ 
+                        background: 'none', 
+                        border: 'none', 
+                        padding: 0, 
+                        cursor: 'pointer',
+                        color: isMoShipped ? "var(--green)" : "var(--text3)",
+                        fontWeight: 600,
+                        fontSize: 12,
+                        textAlign: 'right'
+                      }}
+                      onClick={() => toggleShip(detailSub.id, mo)}
+                    >
+                      {isMoShipped ? "✓ Shipped" : "Not yet shipped"}
+                    </button>
+                  </div>
+                );
+              })}
             </div>
 
             <button 
               className="ship-btn"
-              disabled={shipped.has(detailSub.id)}
               onClick={() => toggleShip(detailSub.id)}
             >
-              {shipped.has(detailSub.id) ? (
+              {detailSub.shipped_months?.includes(selectedMonth) ? (
                 <>
                   <Check size={14} style={{ marginRight: 6, display: 'inline' }} />
                   {detailSub.delivery === 'pickup' ? 'Picked Up' : 'Shipped'} for {fmt(selectedMonth)}
