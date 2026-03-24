@@ -826,6 +826,12 @@ function App() {
                       {st}
                     </span>
                     <OrderLink order={s.order} />
+                    <button 
+                      style={{ background: "none", border: "1px solid #2e2e2e", color: "#888", borderRadius: "4px", padding: "3px 8px", cursor: "pointer", fontSize: "10px", fontFamily: "DM Mono,monospace" }}
+                      onClick={(e) => { e.stopPropagation(); setDetailSub(s); }}
+                    >
+                      View
+                    </button>
                   </div>
                 </div>
               );
