@@ -343,7 +343,7 @@ function App() {
     setDetailCatalogMonth(null);
 
     // DB Update
-    await supabase.from('catalog').upsert({
+    const { error } = await supabase.from('catalog').upsert({
       month,
       artist,
       album,
@@ -355,13 +355,20 @@ function App() {
       damage_buffer: damageBuffer,
       shop_extras: shopExtras,
       jxn_subs: jxnSubs
-    });
+    }, { onConflict: 'month' });
 
-    logAction(
-      "Updated Catalog",
-      `Changed ${fmt(month)} to ${artist} — ${album}.`,
-      'catalog'
-    );
+    if (error) {
+      console.error("Error updating catalog:", error);
+      alert("Error saving catalog: " + error.message);
+      fetchData(); // rollback
+    } else {
+      logAction(
+        "Updated Catalog",
+        `Changed ${fmt(month)} to ${artist} — ${album}.`,
+        'catalog'
+      );
+      alert("Catalog updated successfully!");
+    }
   }
 
   const getBCOrderLink = (orderNum: string) => {
