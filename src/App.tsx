@@ -48,6 +48,7 @@ function App() {
   const [catalogData, setCatalogData] = useState<Catalog>({});
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [dbMonths, setDbMonths] = useState<string[]>(MONTHS);
+  const [isBulkLoading, setIsBulkLoading] = useState(false);
 
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const [subTab, setSubTab] = useState<SubTab>("all");
@@ -324,6 +325,48 @@ function App() {
         `${sub?.recipient} marked as ${!isShipped ? 'shipped' : 'unshipped'} for ${fmt(targetMonth)}`,
         'shipping'
       );
+    }
+  }
+
+  async function bulkToggleShip(ids: string[], shouldShip: boolean) {
+    if (!confirm(`Are you sure you want to mark ${ids.length} subscribers as ${shouldShip ? 'shipped' : 'unshipped'}?`)) return;
+    
+    setIsBulkLoading(true);
+    
+    // Create new shipped_months for each affected subscriber
+    const updatedSubs = subscribers.map(s => {
+      if (!ids.includes(s.id)) return s;
+      const currentMonths = s.shipped_months || [];
+      const newMonths = shouldShip 
+        ? Array.from(new Set([...currentMonths, m]))
+        : currentMonths.filter(mo => mo !== m);
+      return { ...s, shipped_months: newMonths };
+    });
+
+    // Optimistic update
+    setSubscribers(updatedSubs);
+
+    // Update DB
+    try {
+      // We have to do them one by one or use a RPC. 
+      // For ~150-200, one by one is slow but simple. 
+      // Let's try Promise.all
+      await Promise.all(ids.map(async (id) => {
+        const sub = updatedSubs.find(s => s.id === id);
+        return supabase.from('subscribers').update({ shipped_months: sub?.shipped_months }).eq('id', id);
+      }));
+
+      logAction(
+        shouldShip ? "Bulk Shipped" : "Bulk Unshipped",
+        `${ids.length} subscribers marked as ${shouldShip ? 'shipped' : 'unshipped'} for ${fmt(m)}`,
+        'shipping'
+      );
+    } catch (e) {
+      console.error("Bulk update error:", e);
+      alert("Error during bulk update. Refreshing data.");
+      fetchData();
+    } finally {
+      setIsBulkLoading(false);
     }
   }
 
@@ -708,9 +751,22 @@ function App() {
               </div>
             </div>
 
-            <div className="checklist-header">
-              <div className="checklist-title">Shipping Checklist</div>
-              <div className="progress-track">
+            <div className="checklist-header" style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div 
+                  className={cn("check-box", filteredSubs.length > 0 && filteredSubs.every(s => shipped.has(s.id)) && "checked")}
+                  style={{ width: 18, height: 18, borderRadius: 4 }}
+                  onClick={() => {
+                    const allShipped = filteredSubs.every(s => shipped.has(s.id));
+                    bulkToggleShip(filteredSubs.map(s => s.id), !allShipped);
+                  }}
+                >
+                  {filteredSubs.length > 0 && filteredSubs.every(s => shipped.has(s.id)) && <Check size={12} strokeWidth={4} color="#fff" />}
+                </div>
+                <div className="checklist-title">Shipping Checklist</div>
+                {isBulkLoading && <Loader2 size={14} className="animate-spin" style={{ color: 'var(--text3)' }} />}
+              </div>
+              <div className="progress-track" style={{ flex: 1 }}>
                 <div 
                   className="progress-fill" 
                   style={{ width: `${totalToShip > 0 ? (shippedCount / totalToShip) * 100 : 0}%` }} 
