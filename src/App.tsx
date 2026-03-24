@@ -692,7 +692,7 @@ function App() {
                 <div className="stat-sub">{pickupSubs.length} pickup</div>
               </div>
               <div className="stat-cell">
-                <div className="stat-label">Shipped</div>
+                <div className="stat-label">TOTAL SUBS</div>
                 <div className="stat-value amber">{shippedCount} / {totalToShip}</div>
                 <div className="stat-sub">{totalToShip - shippedCount} remaining</div>
               </div>
