@@ -1226,7 +1226,8 @@ function App() {
                     logAction("Added Subscriber", `New subscriber ${billing} added (Order #${order})`, 'subscriber');
                     alert("Subscriber added successfully!");
                     fetchData();
-                    setActiveTab("subscribers");
+                    setActiveTab("dashboard");
+                    setViewMode("directory");
                   }
                 }}
               >
