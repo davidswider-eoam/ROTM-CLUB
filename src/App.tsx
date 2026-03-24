@@ -38,7 +38,7 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-type Tab = 'dashboard' | 'subscribers' | 'catalog' | 'contacts' | 'add' | 'history' | 'settings';
+type Tab = 'dashboard' | 'catalog' | 'contacts' | 'add' | 'history' | 'settings';
 type SubTab = 'all' | 'term' | 'monthly' | 'flagged';
 
 
@@ -51,6 +51,7 @@ function App() {
   const [isBulkLoading, setIsBulkLoading] = useState(false);
 
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
+  const [viewMode, setViewMode] = useState<'shipping' | 'directory'>('shipping');
   const [subTab, setSubTab] = useState<SubTab>("all");
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth());
   const [filter, setFilter] = useState("all");
@@ -511,31 +512,80 @@ function App() {
     );
   };
 
-  const SubRow = ({ sub }: { sub: Subscriber }) => {
+  const SubRow = ({ sub, mode = 'shipping' }: { sub: Subscriber; mode?: 'shipping' | 'directory' }) => {
     const isShipped = shipped.has(sub.id);
     const isNew = isNewThisMonth(sub, m);
     const isLapsing = isLapsingThisMonth(sub, m);
     const isGiftSub = sub.recipient !== sub.billing;
+    const st = statusFor(sub, m);
+    const isMonthly = sub.type === 'monthly';
     
     return (
-      <div className={cn("sub-row", isShipped && "shipped", sub.flag && "flagged")}>
-        <div className={cn("check-box", isShipped && "checked")} onClick={() => toggleShip(sub.id)}>
-          {isShipped && <Check size={14} strokeWidth={3} className="check-mark" />}
-        </div>
+      <div 
+        className={cn(
+          "sub-row", 
+          isShipped && mode === 'shipping' && "shipped", 
+          sub.flag && "flagged",
+          isMonthly && mode === 'directory' && "monthly-row"
+        )}
+        style={mode === 'directory' ? { height: 60, borderLeft: isMonthly ? "4px solid var(--text3)" : (sub.flag ? "4px solid var(--amber)" : "none") } : {}}
+        onClick={() => mode === 'directory' ? setDetailSub(sub) : undefined}
+      >
+        {mode === 'shipping' && (
+          <div className={cn("check-box", isShipped && "checked")} onClick={() => toggleShip(sub.id)}>
+            {isShipped && <Check size={14} strokeWidth={3} className="check-mark" />}
+          </div>
+        )}
+        
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="sub-name">{sub.recipient}</div>
-          {isGiftSub && <div className="sub-gift">gift from {sub.billing}</div>}
+          <div className="sub-name">
+            {sub.recipient}
+            {isGiftSub && <span style={{ color: "var(--text3)", fontSize: 11, fontWeight: 400 }}> · Gift from {sub.billing}</span>}
+          </div>
+          <div className="sub-gift">
+            {mode === 'directory' 
+              ? (sub.billingEmail || "no email") 
+              : (isGiftSub ? `gift from ${sub.billing}` : (sub.billingEmail || ""))}
+          </div>
         </div>
+
         <div className="sub-meta">
           {sub.notes && sub.notes !== "" && (sub.flag || sub.notes.includes("ASK") || sub.notes.includes("!")) &&
             <span className="sub-note" title={sub.notes}>⚑ {sub.notes}</span>}
+          
           {isNew && <span className="badge new">New</span>}
           {isLapsing && <span className="badge lapsing">Last</span>}
+          
+          {isMonthly && sub.signupDate && mode === 'directory' && (
+            <span className="badge" style={{ background: "#f0fdf4", color: "var(--green)", border: "1px solid #dcfce7" }}>
+              Day {new Date(sub.signupDate).getDate()}
+            </span>
+          )}
+          
+          {isMonthly && mode === 'directory' && (
+            <span className="badge" style={{ background: "#eef2ff", color: "var(--text3)", border: "1px solid var(--border)" }}>Watch</span>
+          )}
+          
+          <span className={cn("badge", sub.type.replace("-", ""))} style={{ background: "var(--surface2)", color: "var(--text2)" }}>{sub.type}</span>
+          
+          <span style={{ fontFamily: "DM Mono,monospace", fontSize: 10, color: "var(--text3)" }}>
+            {fmt(sub.start)} → {fmt(sub.end)}
+          </span>
+          
+          <span className={cn("badge", st)} style={{
+            background: st === "active" ? "#dcfce7" : st === "lapsed" ? "#fee2e2" : "#e0e7ff",
+            color: st === "active" ? "var(--green)" : st === "lapsed" ? "var(--red)" : "var(--text3)"
+          }}>
+            {st}
+          </span>
+
           <span className={cn("badge", sub.delivery)}>{sub.delivery}</span>
+          
           <OrderLink order={sub.order} />
+          
           <button 
             style={{ background: "none", border: "1px solid #2e2e2e", color: "#888", borderRadius: "4px", padding: "3px 8px", cursor: "pointer", fontSize: "10px", fontFamily: "DM Mono,monospace" }}
-            onClick={() => setDetailSub(sub)}
+            onClick={(e) => { e.stopPropagation(); setDetailSub(sub); }}
           >
             View
           </button>
@@ -649,7 +699,6 @@ function App() {
         </div>
         {[
           { key: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={14} /> },
-          { key: 'subscribers', label: 'Subscribers', icon: <Users size={14} /> },
           { key: 'catalog', label: 'Catalog', icon: <Disc size={14} /> },
           { key: 'history', label: 'History', icon: <HistoryIcon size={14} /> },
           { key: 'contacts', label: 'Contacts', icon: <Contact size={14} /> },
@@ -751,151 +800,134 @@ function App() {
               </div>
             </div>
 
-            <div className="checklist-header" style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div 
-                  className={cn("check-box", filteredSubs.length > 0 && filteredSubs.every(s => shipped.has(s.id)) && "checked")}
-                  style={{ width: 18, height: 18, borderRadius: 4 }}
-                  onClick={() => {
-                    const allShipped = filteredSubs.every(s => shipped.has(s.id));
-                    bulkToggleShip(filteredSubs.map(s => s.id), !allShipped);
-                  }}
-                >
-                  {filteredSubs.length > 0 && filteredSubs.every(s => shipped.has(s.id)) && <Check size={12} strokeWidth={4} color="#fff" />}
-                </div>
-                <div className="checklist-title">Shipping Checklist</div>
-                {isBulkLoading && <Loader2 size={14} className="animate-spin" style={{ color: 'var(--text3)' }} />}
-              </div>
-              <div className="progress-track" style={{ flex: 1 }}>
-                <div 
-                  className="progress-fill" 
-                  style={{ width: `${totalToShip > 0 ? (shippedCount / totalToShip) * 100 : 0}%` }} 
-                />
-              </div>
-              <div className="progress-label">{shippedCount} of {totalToShip} shipped</div>
-            </div>
-            <div className="filter-bar">
-              {[["all", "All"], ["unshipped", "Unshipped"], ["pickup", "Pickup"], ["flagged", "Flagged"]].map(([k, l]) => (
-                <button 
-                  key={k} 
-                  className={cn("filter-btn", filter === k && "active")} 
-                  onClick={() => setFilter(k)}
-                >
-                  {l}
-                </button>
-              ))}
+            {/* Sub-tab switcher */}
+            <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', padding: '0 24px', background: 'var(--surface)', gap: 8 }}>
+              <button 
+                onClick={() => setViewMode('shipping')} 
+                className={cn("nav-tab", viewMode === 'shipping' && "active")}
+                style={{ height: 48, fontSize: 11 }}
+              >
+                <LayoutDashboard size={14} style={{ marginRight: 8 }} /> Shipping Checklist
+              </button>
+              <button 
+                onClick={() => setViewMode('directory')} 
+                className={cn("nav-tab", viewMode === 'directory' && "active")}
+                style={{ height: 48, fontSize: 11 }}
+              >
+                <Users size={14} style={{ marginRight: 8 }} /> Subscriber Directory
+              </button>
             </div>
 
-            {toShip.length > 0 && (
+            {viewMode === 'shipping' ? (
               <>
-                <div className="section-divider">To Ship — {toShip.length}</div>
-                {toShip.map(s => <SubRow key={s.id} sub={s} />)}
-              </>
-            )}
-            {toPickUp.length > 0 && (
-              <>
-                <div className="section-divider">To Pick Up — {toPickUp.length}</div>
-                {toPickUp.map(s => <SubRow key={s.id} sub={s} />)}
-              </>
-            )}
-            {shippedList.length > 0 && (
-              <>
-                <div className="section-divider">Shipped — {shippedList.length}</div>
-                {shippedList.map(s => <SubRow key={s.id} sub={s} />)}
-              </>
-            )}
-            {pickedUpList.length > 0 && (
-              <>
-                <div className="section-divider">Picked Up — {pickedUpList.length}</div>
-                {pickedUpList.map(s => <SubRow key={s.id} sub={s} />)}
-              </>
-            )}
-          </>
-        )}
-
-        {/* ── SUBSCRIBERS ── */}
-        {activeTab === "subscribers" && (
-          <>
-            <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "12px", background: "var(--surface)" }}>
-              <div style={{ fontWeight: 800, fontSize: 16, letterSpacing: "0.04em", flex: 1 }}>All Subscribers</div>
-              
-              <div style={{ display: "flex", background: "var(--surface2)", borderRadius: 8, padding: 4, gap: 4 }}>
-                {[
-                  { id: 'all', label: 'All', icon: <Users size={12} /> },
-                  { id: 'term', label: 'Fixed Term', icon: <Calendar size={12} /> },
-                  { id: 'monthly', label: 'Monthly Watch', icon: <RefreshCw size={12} /> },
-                  { id: 'flagged', label: 'Flagged', icon: <Flag size={12} /> }
-                ].map(tab => (
-                  <button 
-                    key={tab.id}
-                    onClick={() => setSubTab(tab.id as SubTab)}
-                    className={cn("filter-btn", subTab === tab.id && "active")}
-                    style={{ fontSize: 10, display: "flex", alignItems: "center", gap: 6, border: "none", background: subTab === tab.id ? "var(--surface)" : "transparent" }}
-                  >
-                    {tab.icon} {tab.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            
-            {/* TYPE BREAKDOWN */}
-            <div style={{ display: "flex", background: "var(--surface)", borderBottom: "1px solid var(--border)", padding: "12px 24px", gap: 32 }}>
-              {[
-                { label: 'Monthly', key: 'monthly', color: subTab === 'monthly' ? 'var(--text3)' : 'var(--text2)' },
-                { label: '3-Month', key: '3-month', color: 'var(--text3)' },
-                { label: '6-Month', key: '6-month', color: 'var(--amber)' },
-                { label: '12-Month', key: '12-month', color: 'var(--green)' }
-              ].map(t => (
-                <div key={t.key} style={{ display: 'flex', flexDirection: 'column', gap: 2, opacity: (subTab === 'all' || (subTab === 'monthly' && t.key === 'monthly') || (subTab === 'term' && t.key !== 'monthly')) ? 1 : 0.3 }}>
-                  <div style={{ fontFamily: 'DM Mono,monospace', fontSize: 10, textTransform: 'uppercase', color: 'var(--text3)', letterSpacing: '0.05em' }}>{t.label}</div>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: t.color }}>{subTypeCounts[t.key] || 0}</div>
-                </div>
-              ))}
-            </div>
-
-            {displaySubscribers.map((s) => {
-              const st = statusFor(s, m);
-              const isMonthly = s.type === 'monthly';
-              return (
-                <div key={s.id} className={cn("sub-row", isMonthly && "monthly-row")} style={{ height: 60, borderLeft: isMonthly ? "4px solid var(--text3)" : "none" }} onClick={() => setDetailSub(s)}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="sub-name">
-                      {s.recipient}
-                      {s.recipient !== s.billing && <span style={{ color: "var(--text3)", fontSize: 11, fontWeight: 400 }}> · Gift from {s.billing}</span>}
-                    </div>
-                    <div className="sub-gift">{s.billingEmail || "no email"}</div>
-                  </div>
-                  <div className="sub-meta">
-                    {s.flag && <span className="badge flag">⚑</span>}
-                    {isMonthly && s.signupDate && (
-                      <span className="badge" style={{ background: "#f0fdf4", color: "var(--green)", border: "1px solid #dcfce7" }}>
-                        Day {new Date(s.signupDate).getDate()}
-                      </span>
-                    )}
-                    {isMonthly && <span className="badge" style={{ background: "#eef2ff", color: "var(--text3)", border: "1px solid var(--border)" }}>Watch</span>}
-                    <span className={cn("badge", s.type.replace("-", ""))} style={{ background: "var(--surface2)", color: "var(--text2)" }}>{s.type}</span>
-                    <span style={{ fontFamily: "DM Mono,monospace", fontSize: 10, color: "var(--text3)" }}>{fmt(s.start)} → {fmt(s.end)}</span>
-                    <span className={cn("badge", st)} style={{
-                      background: st === "active" ? "#dcfce7" : st === "lapsed" ? "#fee2e2" : "#e0e7ff",
-                      color: st === "active" ? "var(--green)" : st === "lapsed" ? "var(--red)" : "var(--text3)"
-                    }}>
-                      {st}
-                    </span>
-                    <OrderLink order={s.order} />
-                    <button 
-                      style={{ background: "none", border: "1px solid #2e2e2e", color: "#888", borderRadius: "4px", padding: "3px 8px", cursor: "pointer", fontSize: "10px", fontFamily: "DM Mono,monospace" }}
-                      onClick={(e) => { e.stopPropagation(); setDetailSub(s); }}
+                <div className="checklist-header" style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div 
+                      className={cn("check-box", filteredSubs.length > 0 && filteredSubs.every(s => shipped.has(s.id)) && "checked")}
+                      style={{ width: 18, height: 18, borderRadius: 4 }}
+                      onClick={() => {
+                        const allShipped = filteredSubs.every(s => shipped.has(s.id));
+                        bulkToggleShip(filteredSubs.map(s => s.id), !allShipped);
+                      }}
                     >
-                      View
+                      {filteredSubs.length > 0 && filteredSubs.every(s => shipped.has(s.id)) && <Check size={12} strokeWidth={4} color="#fff" />}
+                    </div>
+                    <div className="checklist-title">Shipping Checklist</div>
+                    {isBulkLoading && <Loader2 size={14} className="animate-spin" style={{ color: 'var(--text3)' }} />}
+                  </div>
+                  <div className="progress-track" style={{ flex: 1 }}>
+                    <div 
+                      className="progress-fill" 
+                      style={{ width: `${totalToShip > 0 ? (shippedCount / totalToShip) * 100 : 0}%` }} 
+                    />
+                  </div>
+                  <div className="progress-label">{shippedCount} of {totalToShip} shipped</div>
+                </div>
+                <div className="filter-bar">
+                  {[["all", "All"], ["unshipped", "Unshipped"], ["pickup", "Pickup"], ["flagged", "Flagged"]].map(([k, l]) => (
+                    <button 
+                      key={k} 
+                      className={cn("filter-btn", filter === k && "active")} 
+                      onClick={() => setFilter(k)}
+                    >
+                      {l}
                     </button>
+                  ))}
+                </div>
+
+                {toShip.length > 0 && (
+                  <>
+                    <div className="section-divider">To Ship — {toShip.length}</div>
+                    {toShip.map(s => <SubRow key={s.id} sub={s} mode="shipping" />)}
+                  </>
+                )}
+                {toPickUp.length > 0 && (
+                  <>
+                    <div className="section-divider">To Pick Up — {toPickUp.length}</div>
+                    {toPickUp.map(s => <SubRow key={s.id} sub={s} mode="shipping" />)}
+                  </>
+                )}
+                {shippedList.length > 0 && (
+                  <>
+                    <div className="section-divider">Shipped — {shippedList.length}</div>
+                    {shippedList.map(s => <SubRow key={s.id} sub={s} mode="shipping" />)}
+                  </>
+                )}
+                {pickedUpList.length > 0 && (
+                  <>
+                    <div className="section-divider">Picked Up — {pickedUpList.length}</div>
+                    {pickedUpList.map(s => <SubRow key={s.id} sub={s} mode="shipping" />)}
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "12px", background: "var(--surface)" }}>
+                  <div style={{ fontWeight: 800, fontSize: 16, letterSpacing: "0.04em", flex: 1 }}>All Subscribers</div>
+                  
+                  <div style={{ display: "flex", background: "var(--surface2)", borderRadius: 8, padding: 4, gap: 4 }}>
+                    {[
+                      { id: 'all', label: 'All', icon: <Users size={12} /> },
+                      { id: 'term', label: 'Fixed Term', icon: <Calendar size={12} /> },
+                      { id: 'monthly', label: 'Monthly Watch', icon: <RefreshCw size={12} /> },
+                      { id: 'flagged', label: 'Flagged', icon: <Flag size={12} /> }
+                    ].map(tab => (
+                      <button 
+                        key={tab.id}
+                        onClick={() => setSubTab(tab.id as SubTab)}
+                        className={cn("filter-btn", subTab === tab.id && "active")}
+                        style={{ fontSize: 10, display: "flex", alignItems: "center", gap: 6, border: "none", background: subTab === tab.id ? "var(--surface)" : "transparent" }}
+                      >
+                        {tab.icon} {tab.label}
+                      </button>
+                    ))}
                   </div>
                 </div>
-              );
-            })}
-            {displaySubscribers.length === 0 && (
-              <div style={{ padding: "60px 24px", textAlign: "center", color: "var(--text3)", fontFamily: "DM Mono,monospace", fontSize: 13 }}>
-                No subscribers found in this category.
-              </div>
+                
+                <div style={{ display: "flex", background: "var(--surface)", borderBottom: "1px solid var(--border)", padding: "12px 24px", gap: 32 }}>
+                  {[
+                    { label: 'Monthly', key: 'monthly', color: subTab === 'monthly' ? 'var(--text3)' : 'var(--text2)' },
+                    { label: '3-Month', key: '3-month', color: 'var(--text3)' },
+                    { label: '6-Month', key: '6-month', color: 'var(--amber)' },
+                    { label: '12-Month', key: '12-month', color: 'var(--green)' }
+                  ].map(t => (
+                    <div key={t.key} style={{ display: 'flex', flexDirection: 'column', gap: 2, opacity: (subTab === 'all' || (subTab === 'monthly' && t.key === 'monthly') || (subTab === 'term' && t.key !== 'monthly')) ? 1 : 0.3 }}>
+                      <div style={{ fontFamily: 'DM Mono,monospace', fontSize: 10, textTransform: 'uppercase', color: 'var(--text3)', letterSpacing: '0.05em' }}>{t.label}</div>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: t.color }}>{subTypeCounts[t.key] || 0}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {displaySubscribers.map((s) => (
+                  <SubRow key={s.id} sub={s} mode="directory" />
+                ))}
+                
+                {displaySubscribers.length === 0 && (
+                  <div style={{ padding: "60px 24px", textAlign: "center", color: "var(--text3)", fontFamily: "DM Mono,monospace", fontSize: 13 }}>
+                    No subscribers found in this category.
+                  </div>
+                )}
+              </>
             )}
           </>
         )}
