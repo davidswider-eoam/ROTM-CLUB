@@ -43,35 +43,46 @@ serve(async (req) => {
 
     // 4. Handle Actions
     if (action === 'fetch_recent') {
-      // Fetch orders from the last 7 days
       const sevenDaysAgo = new Date()
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
-      const rfcDate = sevenDaysAgo.toISOString()
+      const rfcDate = sevenDaysAgo.toUTCString() // Better for BC V2
 
-      // BigCommerce V2 Orders API is often better for simple listing
-      const response = await fetch(`${v2Url}/orders?min_date_created=${rfcDate}&limit=50&sort=date_created:desc`, {
+      console.log(`Fetching orders from ${v2Url} since ${rfcDate}`)
+
+      const response = await fetch(`${v2Url}/orders?min_date_created=${encodeURIComponent(rfcDate)}&limit=50&sort=date_created:desc`, {
         headers: {
           'X-Auth-Token': ACCESS_TOKEN,
           'Accept': 'application/json',
         }
       })
 
+      if (!response.ok) {
+        const errText = await response.text()
+        console.error(`BigCommerce API Error (Recent): ${response.status} ${errText}`)
+        throw new Error(`BigCommerce API returned ${response.status}: ${errText}`)
+      }
+
       const orders = await response.json()
-      
-      // We also need to fetch products for these orders to see if they are ROTM
-      // But for a first "Read-Only" test, let's just return the orders
       return new Response(JSON.stringify(orders), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
     if (action === 'check_status' && orderId) {
+      console.log(`Checking status for order ${orderId} at ${v2Url}`)
       const response = await fetch(`${v2Url}/orders/${orderId}`, {
         headers: {
           'X-Auth-Token': ACCESS_TOKEN,
           'Accept': 'application/json',
         }
       })
+
+      if (!response.ok) {
+        const errText = await response.text()
+        console.error(`BigCommerce API Error (Status): ${response.status} ${errText}`)
+        throw new Error(`BigCommerce API returned ${response.status}: ${errText}`)
+      }
+
       const order = await response.json()
       return new Response(JSON.stringify(order), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
