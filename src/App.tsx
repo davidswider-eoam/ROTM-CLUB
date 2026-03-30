@@ -81,15 +81,24 @@ function App() {
       const { data, error } = await supabase.functions.invoke('bigcommerce-bridge', {
         body: { action: 'fetch_recent' }
       });
-      if (error) throw error;
+      
+      if (error) {
+        // Check if the error has a body/message from our function
+        const msg = error.message || "Connection failed";
+        throw new Error(msg);
+      }
+      
+      if (!data || data.error) {
+        throw new Error(data?.error || "No data returned from BigCommerce");
+      }
       
       // Filter out orders that are already in our database
       const existingOrders = new Set(subscribers.map(s => s.order?.toString().replace('#', '')));
       const filtered = data.filter((o: any) => !existingOrders.has(o.id.toString()));
       setIncomingOrders(filtered);
-    } catch (e) {
+    } catch (e: any) {
       console.error("Error fetching BC orders:", e);
-      alert("Error fetching BigCommerce orders. Check your keys in Supabase Secrets.");
+      alert(`Error: ${e.message}. \n\nPlease ensure your BigCommerce Keys are correct in Supabase Secrets.`);
     } finally {
       setIsFetchingBC(false);
     }
