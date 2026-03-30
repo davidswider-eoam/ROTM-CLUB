@@ -8,48 +8,49 @@ const corsHeaders = {
 }
 
 serve(async (req) => {
-  // 1. Handle CORS
+  // 1. Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    // 2. Verify Auth (Security Check)
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
-    )
+    // 2. Initialize Supabase Client to verify the staff user
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
+    const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+    const authHeader = req.headers.get('Authorization')
 
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser()
-    if (authError || !user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 401,
-      })
+    if (!authHeader) {
+      throw new Error('No Authorization header provided')
     }
 
-    // 3. Get BigCommerce Credentials
+    const supabaseClient = createClient(supabaseUrl, supabaseKey, {
+      global: { headers: { Authorization: authHeader } }
+    })
+
+    // 3. Verify the user is a logged-in staff member
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser()
+    if (authError || !user) {
+      throw new Error('Unauthorized: You must be logged in as staff')
+    }
+
+    // 4. Get BigCommerce Credentials from Secrets
     const STORE_HASH = Deno.env.get('BC_STORE_HASH')
     const ACCESS_TOKEN = Deno.env.get('BC_ACCESS_TOKEN')
 
     if (!STORE_HASH || !ACCESS_TOKEN) {
-      return new Response(JSON.stringify({ 
-        error: `Missing credentials. Found HASH: ${!!STORE_HASH}, TOKEN: ${!!ACCESS_TOKEN}. Please check Supabase > Edge Functions > Manage Secrets.` 
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200,
-      })
+      throw new Error(`Configuration Error: Missing BigCommerce secrets (Hash: ${!!STORE_HASH}, Token: ${!!ACCESS_TOKEN})`)
     }
 
-    const { action, orderId } = await req.json()
+    // 5. Parse the request action
+    const body = await req.json().catch(() => ({}))
+    const { action, orderId } = body
     const v2Url = `https://api.bigcommerce.com/stores/${STORE_HASH}/v2`
 
-    // 4. Handle Actions
+    // 6. ACTION: Fetch Recent Orders
     if (action === 'fetch_recent') {
       const sevenDaysAgo = new Date()
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
-      // BigCommerce V2 expects: Tue, 20 Nov 2012 00:00:00 +0000
+      // BigCommerce V2 expects specific RFC2822 format
       const rfcDate = sevenDaysAgo.toUTCString().replace('GMT', '+0000')
 
       const response = await fetch(`${v2Url}/orders?min_date_created=${encodeURIComponent(rfcDate)}&limit=50&sort=date_created:desc`, {
@@ -61,18 +62,17 @@ serve(async (req) => {
 
       if (!response.ok) {
         const errText = await response.text()
-        return new Response(JSON.stringify({ error: `BigCommerce Error (${response.status}): ${errText}` }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 200,
-        })
+        throw new Error(`BigCommerce Error (${response.status}): ${errText}`)
       }
 
       const orders = await response.json()
       return new Response(JSON.stringify(orders), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200
       })
     }
 
+    // 7. ACTION: Check Specific Order Status
     if (action === 'check_status' && orderId) {
       const response = await fetch(`${v2Url}/orders/${orderId}`, {
         headers: {
@@ -83,24 +83,23 @@ serve(async (req) => {
 
       if (!response.ok) {
         const errText = await response.text()
-        return new Response(JSON.stringify({ error: `BigCommerce Error (${response.status}): ${errText}` }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 200,
-        })
+        throw new Error(`BigCommerce Error (${response.status}): ${errText}`)
       }
 
       const order = await response.json()
       return new Response(JSON.stringify(order), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200
       })
     }
 
-    throw new Error('Invalid action')
+    throw new Error(`Invalid action: ${action}`)
 
   } catch (error) {
+    // CRITICAL: Always return 200 with an error body so the UI can show the message
     return new Response(JSON.stringify({ error: error.message }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 400,
+      status: 200
     })
   }
 })
