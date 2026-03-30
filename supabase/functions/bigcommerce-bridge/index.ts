@@ -50,9 +50,9 @@ serve(async (req) => {
     if (action === 'fetch_recent') {
       const sevenDaysAgo = new Date()
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
-      // BigCommerce V2 expects specific RFC2822 format
       const rfcDate = sevenDaysAgo.toUTCString().replace('GMT', '+0000')
 
+      // 1. Fetch the list of recent orders
       const response = await fetch(`${v2Url}/orders?min_date_created=${encodeURIComponent(rfcDate)}&limit=50&sort=date_created:desc`, {
         headers: {
           'X-Auth-Token': ACCESS_TOKEN,
@@ -65,8 +65,32 @@ serve(async (req) => {
         throw new Error(`BigCommerce Error (${response.status}): ${errText}`)
       }
 
-      const orders = await response.json()
-      return new Response(JSON.stringify(orders), {
+      const basicOrders = await response.json()
+      
+      // 2. Fetch FULL details for each order (specifically for shipping addresses)
+      // We do this in parallel to keep it fast
+      const fullOrders = await Promise.all(basicOrders.map(async (o: any) => {
+        const detailRes = await fetch(`${v2Url}/orders/${o.id}`, {
+          headers: {
+            'X-Auth-Token': ACCESS_TOKEN,
+            'Accept': 'application/json',
+          }
+        })
+        const fullOrder = await detailRes.json()
+        
+        // Also fetch shipping addresses explicitly as V2 sometimes hides them in the main response
+        const shipRes = await fetch(`${v2Url}/orders/${o.id}/shipping_addresses`, {
+          headers: {
+            'X-Auth-Token': ACCESS_TOKEN,
+            'Accept': 'application/json',
+          }
+        })
+        fullOrder.shipping_addresses = await shipRes.json()
+        
+        return fullOrder
+      }))
+
+      return new Response(JSON.stringify(fullOrders), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200
       })
