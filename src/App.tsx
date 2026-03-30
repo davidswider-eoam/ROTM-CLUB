@@ -19,7 +19,9 @@ import {
   Calendar,
   RefreshCw,
   Sparkles,
-  Loader2
+  Loader2,
+  Inbox,
+  AlertTriangle
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -38,7 +40,7 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-type Tab = 'dashboard' | 'catalog' | 'contacts' | 'add' | 'history' | 'settings';
+type Tab = 'dashboard' | 'incoming' | 'catalog' | 'contacts' | 'add' | 'history' | 'settings';
 type SubTab = 'all' | 'term' | 'monthly' | 'flagged';
 
 
@@ -49,6 +51,9 @@ function App() {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [dbMonths, setDbMonths] = useState<string[]>(MONTHS);
   const [isBulkLoading, setIsBulkLoading] = useState(false);
+  const [incomingOrders, setIncomingOrders] = useState<any[]>([]);
+  const [isFetchingBC, setIsFetchingBC] = useState(false);
+  const [auditResults, setAuditResults] = useState<Record<string, string>>({});
 
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const [viewMode, setViewMode] = useState<'shipping' | 'directory'>('shipping');
@@ -70,6 +75,48 @@ function App() {
   useEffect(() => {
     localStorage.setItem('bcStoreUrl', bcStoreUrl);
   }, [bcStoreUrl]);
+
+  const fetchIncomingOrders = async () => {
+    setIsFetchingBC(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('bigcommerce-bridge', {
+        body: { action: 'fetch_recent' }
+      });
+      if (error) throw error;
+      
+      // Filter out orders that are already in our database
+      const existingOrders = new Set(subscribers.map(s => s.order?.toString().replace('#', '')));
+      const filtered = data.filter((o: any) => !existingOrders.has(o.id.toString()));
+      setIncomingOrders(filtered);
+    } catch (e) {
+      console.error("Error fetching BC orders:", e);
+      alert("Error fetching BigCommerce orders. Check your keys in Supabase Secrets.");
+    } finally {
+      setIsFetchingBC(false);
+    }
+  };
+
+  const checkOrderStatus = async (sub: Subscriber) => {
+    if (!sub.order || sub.order === "INSTORE") return;
+    
+    // Optimistic loading state in a record
+    setAuditResults(prev => ({ ...prev, [sub.id]: 'checking...' }));
+
+    try {
+      const orderId = sub.order.toString().replace('#', '');
+      const { data, error } = await supabase.functions.invoke('bigcommerce-bridge', {
+        body: { action: 'check_status', orderId }
+      });
+      
+      if (error) throw error;
+      
+      const status = data.status || 'Unknown';
+      setAuditResults(prev => ({ ...prev, [sub.id]: status }));
+    } catch (e) {
+      console.error("Audit error:", e);
+      setAuditResults(prev => ({ ...prev, [sub.id]: 'Error' }));
+    }
+  };
 
   // Fetch Data
   const fetchData = async () => {
@@ -565,6 +612,12 @@ function App() {
           {isMonthly && mode === 'directory' && (
             <span className="badge" style={{ background: "#eef2ff", color: "var(--text3)", border: "1px solid var(--border)" }}>Watch</span>
           )}
+
+          {auditResults[sub.id] && (
+            <span className={cn("badge", auditResults[sub.id] === 'Shipped' || auditResults[sub.id] === 'Completed' ? 'ship' : 'flag')}>
+              BC: {auditResults[sub.id]}
+            </span>
+          )}
           
           <span className={cn("badge", sub.type.replace("-", ""))} style={{ background: "var(--surface2)", color: "var(--text2)" }}>{sub.type}</span>
           
@@ -699,6 +752,7 @@ function App() {
         </div>
         {[
           { key: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={14} /> },
+          { key: 'incoming', label: 'Incoming', icon: <Inbox size={14} /> },
           { key: 'catalog', label: 'Catalog', icon: <Disc size={14} /> },
           { key: 'history', label: 'History', icon: <HistoryIcon size={14} /> },
           { key: 'contacts', label: 'Contacts', icon: <Contact size={14} /> },
@@ -885,6 +939,20 @@ function App() {
                 <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "12px", background: "var(--surface)" }}>
                   <div style={{ fontWeight: 800, fontSize: 16, letterSpacing: "0.04em", flex: 1 }}>All Subscribers</div>
                   
+                  <div style={{ display: 'flex', gap: 8, marginRight: 16 }}>
+                    <button 
+                      onClick={() => {
+                        const monthlys = subscribers.filter(s => s.type === 'monthly');
+                        monthlys.forEach(s => checkOrderStatus(s));
+                      }}
+                      className="filter-btn"
+                      style={{ fontSize: 10, display: "flex", alignItems: "center", gap: 6, background: "var(--surface2)", color: "var(--text3)" }}
+                      title="Check current BigCommerce status for all Monthly subscribers"
+                    >
+                      <RefreshCw size={12} /> Audit Monthly Subs
+                    </button>
+                  </div>
+
                   <div style={{ display: "flex", background: "var(--surface2)", borderRadius: 8, padding: 4, gap: 4 }}>
                     {[
                       { id: 'all', label: 'All', icon: <Users size={12} /> },
@@ -928,6 +996,84 @@ function App() {
                   </div>
                 )}
               </>
+            )}
+          </>
+        )}
+
+        {/* ── INCOMING ── */}
+        {activeTab === "incoming" && (
+          <>
+            <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 16 }}>New BigCommerce Orders</div>
+                <div style={{ fontFamily: "DM Mono,monospace", fontSize: 11, color: "var(--text3)", marginTop: 4 }}>Review orders before adding them to the database</div>
+              </div>
+              <button 
+                onClick={fetchIncomingOrders}
+                disabled={isFetchingBC}
+                style={{ background: "var(--text3)", color: "#fff", border: "none", borderRadius: "4px", padding: "8px 16px", cursor: "pointer", fontSize: 11, fontFamily: "DM Mono,monospace", display: "flex", alignItems: "center", gap: 6 }}
+              >
+                {isFetchingBC ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Fetch New Orders
+              </button>
+            </div>
+
+            {incomingOrders.length === 0 ? (
+              <div style={{ padding: "80px 24px", textAlign: "center", color: "var(--text3)", fontFamily: "DM Mono,monospace" }}>
+                {isFetchingBC ? "Talking to BigCommerce..." : "No new orders found in the last 7 days."}
+              </div>
+            ) : (
+              <div style={{ padding: 0 }}>
+                {incomingOrders.map((order) => {
+                  const billing = `${order.billing_address.first_name} ${order.billing_address.last_name}`;
+                  const shipping = `${order.shipping_addresses[0]?.first_name} ${order.shipping_addresses[0]?.last_name}`;
+                  const isGift = billing !== shipping;
+                  
+                  return (
+                    <div key={order.id} style={{ padding: "16px 24px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 20 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <div style={{ fontWeight: 700, fontSize: 14 }}>{shipping}</div>
+                          <span className="badge" style={{ background: "var(--surface2)", color: "var(--text2)" }}>#{order.id}</span>
+                          <span className={cn("badge", order.status.toLowerCase().includes('paid') ? 'ship' : 'flag')}>
+                            {order.status}
+                          </span>
+                        </div>
+                        <div style={{ fontFamily: "DM Mono,monospace", fontSize: 11, color: "var(--text3)", marginTop: 4 }}>
+                          {isGift ? `Gift from ${billing}` : billing} · {order.billing_address.email}
+                        </div>
+                        <div style={{ fontSize: 11, color: "var(--text2)", marginTop: 4 }}>
+                          Placed on {new Date(order.date_created).toLocaleDateString()}
+                        </div>
+                      </div>
+                      
+                      <button 
+                        className="submit-btn" 
+                        style={{ padding: "8px 16px", fontSize: 11 }}
+                        onClick={() => {
+                          // Prefill the "Add" form state and switch tabs
+                          // We'll use a DOM shortcut for simplicity since the form isn't state-controlled yet
+                          setActiveTab("add");
+                          setTimeout(() => {
+                            const bName = document.getElementById('new-billing') as HTMLInputElement;
+                            const bEmail = document.getElementById('new-email') as HTMLInputElement;
+                            const rName = document.getElementById('new-recipient') as HTMLInputElement;
+                            const rEmail = document.getElementById('new-recipient-email') as HTMLInputElement;
+                            const orderNum = document.getElementById('new-order') as HTMLInputElement;
+                            
+                            if (bName) bName.value = billing;
+                            if (bEmail) bEmail.value = order.billing_address.email;
+                            if (rName) rName.value = shipping;
+                            if (rEmail) rEmail.value = order.billing_address.email; // BC often only has one email
+                            if (orderNum) orderNum.value = order.id.toString();
+                          }, 100);
+                        }}
+                      >
+                        Accept & Review
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </>
         )}
