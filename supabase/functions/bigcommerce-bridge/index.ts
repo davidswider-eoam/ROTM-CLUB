@@ -34,20 +34,23 @@ serve(async (req) => {
     const ACCESS_TOKEN = Deno.env.get('BC_ACCESS_TOKEN')
 
     if (!STORE_HASH || !ACCESS_TOKEN) {
-      throw new Error('Missing BigCommerce credentials')
+      return new Response(JSON.stringify({ 
+        error: `Missing credentials. Found HASH: ${!!STORE_HASH}, TOKEN: ${!!ACCESS_TOKEN}. Please check Supabase > Edge Functions > Manage Secrets.` 
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200,
+      })
     }
 
     const { action, orderId } = await req.json()
-    const baseUrl = `https://api.bigcommerce.com/stores/${STORE_HASH}/v3`
     const v2Url = `https://api.bigcommerce.com/stores/${STORE_HASH}/v2`
 
     // 4. Handle Actions
     if (action === 'fetch_recent') {
       const sevenDaysAgo = new Date()
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
-      const rfcDate = sevenDaysAgo.toUTCString() // Better for BC V2
-
-      console.log(`Fetching orders from ${v2Url} since ${rfcDate}`)
+      // BigCommerce V2 expects: Tue, 20 Nov 2012 00:00:00 +0000
+      const rfcDate = sevenDaysAgo.toUTCString().replace('GMT', '+0000')
 
       const response = await fetch(`${v2Url}/orders?min_date_created=${encodeURIComponent(rfcDate)}&limit=50&sort=date_created:desc`, {
         headers: {
@@ -58,8 +61,10 @@ serve(async (req) => {
 
       if (!response.ok) {
         const errText = await response.text()
-        console.error(`BigCommerce API Error (Recent): ${response.status} ${errText}`)
-        throw new Error(`BigCommerce API returned ${response.status}: ${errText}`)
+        return new Response(JSON.stringify({ error: `BigCommerce Error (${response.status}): ${errText}` }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
+        })
       }
 
       const orders = await response.json()
@@ -69,7 +74,6 @@ serve(async (req) => {
     }
 
     if (action === 'check_status' && orderId) {
-      console.log(`Checking status for order ${orderId} at ${v2Url}`)
       const response = await fetch(`${v2Url}/orders/${orderId}`, {
         headers: {
           'X-Auth-Token': ACCESS_TOKEN,
@@ -79,8 +83,10 @@ serve(async (req) => {
 
       if (!response.ok) {
         const errText = await response.text()
-        console.error(`BigCommerce API Error (Status): ${response.status} ${errText}`)
-        throw new Error(`BigCommerce API returned ${response.status}: ${errText}`)
+        return new Response(JSON.stringify({ error: `BigCommerce Error (${response.status}): ${errText}` }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
+        })
       }
 
       const order = await response.json()
