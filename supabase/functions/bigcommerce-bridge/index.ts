@@ -107,7 +107,10 @@ serve(async (req) => {
 
     // 7. ACTION: Check Specific Order Status
     if (action === 'check_status' && orderId) {
-      const response = await fetch(`${v2Url}/orders/${orderId}`, {
+      const trimmedId = orderId.toString().trim().replace('#', '');
+      
+      // Fetch Order Details
+      const response = await fetch(`${v2Url}/orders/${trimmedId}`, {
         headers: {
           'X-Auth-Token': ACCESS_TOKEN,
           'Accept': 'application/json',
@@ -120,7 +123,24 @@ serve(async (req) => {
       }
 
       const order = await response.json()
-      return new Response(JSON.stringify(order), {
+
+      // Also Fetch Shipments for Tracking
+      const shipRes = await fetch(`${v2Url}/orders/${trimmedId}/shipments`, {
+        headers: {
+          'X-Auth-Token': ACCESS_TOKEN,
+          'Accept': 'application/json',
+        }
+      })
+      
+      let shipments = [];
+      if (shipRes.ok) {
+        shipments = await shipRes.json();
+      }
+
+      return new Response(JSON.stringify({
+        status: order.status,
+        shipments: shipments
+      }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200
       })

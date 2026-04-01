@@ -13,12 +13,12 @@ create table subscribers (
   delivery_method text not null,   -- 'ship', 'pickup'
   start_month text not null,       -- YYYY-MM
   end_month text,                  -- YYYY-MM
-  notes: text,
-  is_flagged: boolean default false,
-  signup_date: date,
-  shipped_months: text[] default '{}', -- Array of 'YYYY-MM' strings
-  created_at: timestamptz default now()
-  );
+  notes text,
+  is_flagged boolean default false,
+  signup_date date,
+  shipped_months text[] default '{}', -- Array of 'YYYY-MM' strings
+  created_at timestamptz default now()
+);
 
 -- Catalog Table
 create table catalog (
@@ -51,15 +51,7 @@ alter table subscribers enable row level security;
 alter table catalog enable row level security;
 alter table history enable row level security;
 
--- Create Policies (Allow authenticated users to read/write)
--- Subscribers
-create policy "Enable read access for authenticated users" on subscribers for select using (auth.role() = 'authenticated');
-create policy "Enable insert access for authenticated users" on subscribers for insert with check (auth.role() = 'authenticated');
-create policy "Enable update access for authenticated users" on subscribers for update using (auth.role() = 'authenticated');
-create policy "Enable delete access for authenticated users" on subscribers for delete using (auth.role() = 'authenticated');
-
--- Catalog
-create policy "Enable all access for authenticated users" on catalog for all using (auth.role() = 'authenticated');
-
--- History
-create policy "Enable all access for authenticated users" on history for all using (auth.role() = 'authenticated');
+-- Create Policies (Only allow authenticated users)
+create policy "Authenticated users can access subscribers" on subscribers for all using (auth.role() = 'authenticated');
+create policy "Authenticated users can access catalog" on catalog for all using (auth.role() = 'authenticated');
+create policy "Authenticated users can access history" on history for all using (auth.role() = 'authenticated');

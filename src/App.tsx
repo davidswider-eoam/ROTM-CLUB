@@ -52,7 +52,7 @@ function App() {
   const [isBulkLoading, setIsBulkLoading] = useState(false);
   const [incomingOrders, setIncomingOrders] = useState<any[]>([]);
   const [isFetchingBC, setIsFetchingBC] = useState(false);
-  const [auditResults, setAuditResults] = useState<Record<string, string>>({});
+  const [auditResults, setAuditResults] = useState<Record<string, any>>({});
   const [isPushingBC, setIsPushingBC] = useState<Record<string, boolean>>({});
 
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
@@ -108,8 +108,8 @@ function App() {
   const checkOrderStatus = async (sub: Subscriber) => {
     if (!sub.order || sub.order === "INSTORE") return;
     
-    // Optimistic loading state in a record
-    setAuditResults(prev => ({ ...prev, [sub.id]: 'checking...' }));
+    // Optimistic loading state
+    setAuditResults(prev => ({ ...prev, [sub.id]: { status: 'checking...' } }));
 
     try {
       const orderId = sub.order.toString().replace('#', '');
@@ -118,12 +118,19 @@ function App() {
       });
       
       if (error) throw error;
+      if (data.error) throw new Error(data.error);
       
       const status = data.status || 'Unknown';
-      setAuditResults(prev => ({ ...prev, [sub.id]: status }));
-    } catch (e) {
+      const shipments = data.shipments || [];
+      const tracking = shipments.length > 0 ? shipments[0].tracking_number : undefined;
+
+      setAuditResults(prev => ({ 
+        ...prev, 
+        [sub.id]: { status, tracking, shipments } 
+      }));
+    } catch (e: any) {
       console.error("Audit error:", e);
-      setAuditResults(prev => ({ ...prev, [sub.id]: 'Error' }));
+      setAuditResults(prev => ({ ...prev, [sub.id]: { status: 'Error' } }));
     }
   };
 
@@ -156,7 +163,7 @@ function App() {
       logAction("BC Sync", `Added ${productName} to Order #${orderId}`, 'shipping');
       
       // Update local audit result to show success
-      setAuditResults(prev => ({ ...prev, [sub.id]: 'Synced' }));
+      setAuditResults(prev => ({ ...prev, [sub.id]: { status: 'Synced' } }));
     } catch (e: any) {
       console.error("BC Push Error:", e);
       alert(`Failed to add to BigCommerce: ${e.message}`);
@@ -661,8 +668,16 @@ function App() {
           )}
 
           {auditResults[sub.id] && (
-            <span className={cn("badge", auditResults[sub.id] === 'Shipped' || auditResults[sub.id] === 'Completed' ? 'ship' : 'flag')}>
-              BC: {auditResults[sub.id]}
+            <span 
+              className={cn("badge", (auditResults[sub.id].status === 'Shipped' || auditResults[sub.id].status === 'Completed' || auditResults[sub.id].status === 'Synced') ? 'ship' : 'flag')}
+              title={auditResults[sub.id].tracking ? `Tracking: ${auditResults[sub.id].tracking}` : undefined}
+            >
+              BC: {auditResults[sub.id].status}
+              {auditResults[sub.id].tracking && (
+                <span style={{ marginLeft: 4, opacity: 0.8, fontSize: '9px', borderLeft: '1px solid currentColor', paddingLeft: 4 }}>
+                  {auditResults[sub.id].tracking}
+                </span>
+              )}
             </span>
           )}
           
@@ -686,7 +701,7 @@ function App() {
           {mode === 'shipping' && sub.order && sub.order !== "INSTORE" && (
             <button 
               style={{ 
-                background: auditResults[sub.id] === 'Synced' ? "var(--green)" : "var(--text3)", 
+                background: auditResults[sub.id]?.status === 'Synced' ? "var(--green)" : "var(--text3)", 
                 color: "#fff", 
                 border: "none", 
                 borderRadius: "4px", 
@@ -698,11 +713,11 @@ function App() {
                 alignItems: "center",
                 gap: 4
               }}
-              disabled={isPushingBC[sub.id] || auditResults[sub.id] === 'Synced'}
+              disabled={isPushingBC[sub.id] || auditResults[sub.id]?.status === 'Synced'}
               onClick={(e) => { e.stopPropagation(); pushToBigCommerce(sub); }}
             >
               {isPushingBC[sub.id] ? <Loader2 size={10} className="animate-spin" /> : <RefreshCw size={10} />}
-              {auditResults[sub.id] === 'Synced' ? "Synced" : "Push to BC"}
+              {auditResults[sub.id]?.status === 'Synced' ? "Synced" : "Push to BC"}
             </button>
           )}
 
