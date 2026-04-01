@@ -131,8 +131,9 @@ serve(async (req) => {
       const { productName } = body;
       if (!productName) throw new Error("Missing productName");
 
-      // We use a trailing slash and product_id: 0 for custom items to avoid redirects (405 errors)
-      const response = await fetch(`${v2Url}/orders/${orderId.trim()}/products/`, {
+      const targetUrl = `${v2Url}/orders/${orderId.trim()}/products`;
+      
+      const response = await fetch(targetUrl, {
         method: 'POST',
         headers: {
           'X-Auth-Token': ACCESS_TOKEN,
@@ -140,7 +141,6 @@ serve(async (req) => {
           'Accept': 'application/json',
         },
         body: JSON.stringify({
-          product_id: 0,
           name: productName,
           quantity: 1,
           price_inc_tax: 0.00,
@@ -150,7 +150,7 @@ serve(async (req) => {
 
       if (!response.ok) {
         const errText = await response.text()
-        throw new Error(`Failed to add product: ${errText}`)
+        throw new Error(`BigCommerce Error (${response.status}) at ${targetUrl}: ${errText}`)
       }
 
       const result = await response.json()
