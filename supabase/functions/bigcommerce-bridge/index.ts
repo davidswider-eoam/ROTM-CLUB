@@ -153,45 +153,36 @@ serve(async (req) => {
 
       const trimmedId = orderId.toString().trim().replace('#', '');
       
-      // 1. Fetch CURRENT products in the order (to avoid overwriting them)
-      const currentProductsRes = await fetch(`${v2Url}/orders/${trimmedId}/products`, {
+      // 1. Fetch Shipping Addresses to get a valid order_address_id
+      const shipRes = await fetch(`${v2Url}/orders/${trimmedId}/shipping_addresses`, {
         headers: {
           'X-Auth-Token': ACCESS_TOKEN,
           'Accept': 'application/json',
         }
       });
 
-      if (!currentProductsRes.ok) {
-        throw new Error(`BigCommerce Error fetching current products (${currentProductsRes.status}): ${await currentProductsRes.text()}`);
+      if (!shipRes.ok) {
+        throw new Error(`BigCommerce Error fetching addresses (${shipRes.status}): ${await shipRes.text()}`);
       }
 
-      const currentProducts = await currentProductsRes.json();
-      
-      // 2. Prepare the new products array (Existing items + New item)
-      // We must include the 'id' for existing items so they aren't deleted/duplicated
-      const updatedProducts = [
-        ...currentProducts.map((p: any) => ({
-          id: p.id,
-          // You can also include quantity/price if you want to be safe, 
-          // but BC usually just needs the ID to know it's not new.
-        })),
-        {
-          product_id: 0,
-          name: productName,
-          quantity: 1,
-          price_inc_tax: 0.00,
-          price_ex_tax: 0.00
-        }
-      ];
+      const addresses = await shipRes.json();
+      if (!addresses || addresses.length === 0) {
+        throw new Error("Order has no shipping addresses; cannot add product.");
+      }
+      const addressId = addresses[0].id;
 
-      // 3. PUT the update to the order
-      const targetUrl = `${v2Url}/orders/${trimmedId}`;
+      // 2. POST the new product to the order (Custom item = no product_id)
+      const targetUrl = `${v2Url}/orders/${trimmedId}/products`;
       const payload = JSON.stringify({
-        products: updatedProducts
+        order_address_id: addressId,
+        name: productName,
+        quantity: 1,
+        price_inc_tax: 0.00,
+        price_ex_tax: 0.00
       });
 
       const response = await fetch(targetUrl, {
-        method: 'PUT',
+        method: 'POST',
         headers: {
           'X-Auth-Token': ACCESS_TOKEN,
           'Content-Type': 'application/json',
@@ -202,7 +193,7 @@ serve(async (req) => {
 
       if (!response.ok) {
         const errText = await response.text()
-        throw new Error(`BigCommerce Error (${response.status}) updating order: ${errText}`)
+        throw new Error(`BigCommerce Error (${response.status}) adding product: ${errText}`)
       }
 
       const result = await response.json()
