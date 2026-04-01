@@ -131,21 +131,27 @@ serve(async (req) => {
       const { productName } = body;
       if (!productName) throw new Error("Missing productName");
 
-      const targetUrl = `${v2Url}/orders/${orderId.trim()}/products`;
+      const trimmedId = orderId.toString().trim().replace('#', '');
+      // Some BigCommerce environments require .json at the end for POST to work
+      const targetUrl = `${v2Url}/orders/${trimmedId}/products.json`;
       
+      const payload = JSON.stringify({
+        product_id: 0,
+        name: productName,
+        quantity: 1,
+        price_inc_tax: 0.00,
+        price_ex_tax: 0.00
+      });
+
       const response = await fetch(targetUrl, {
         method: 'POST',
         headers: {
           'X-Auth-Token': ACCESS_TOKEN,
           'Content-Type': 'application/json',
           'Accept': 'application/json',
+          'Content-Length': payload.length.toString()
         },
-        body: JSON.stringify({
-          name: productName,
-          quantity: 1,
-          price_inc_tax: 0.00,
-          price_ex_tax: 0.00
-        })
+        body: payload
       })
 
       if (!response.ok) {
