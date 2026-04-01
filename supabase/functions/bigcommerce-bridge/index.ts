@@ -152,31 +152,57 @@ serve(async (req) => {
       if (!productName) throw new Error("Missing productName");
 
       const trimmedId = orderId.toString().trim().replace('#', '');
-      // Some BigCommerce environments require .json at the end for POST to work
-      const targetUrl = `${v2Url}/orders/${trimmedId}/products.json`;
       
+      // 1. Fetch CURRENT products in the order (to avoid overwriting them)
+      const currentProductsRes = await fetch(`${v2Url}/orders/${trimmedId}/products`, {
+        headers: {
+          'X-Auth-Token': ACCESS_TOKEN,
+          'Accept': 'application/json',
+        }
+      });
+
+      if (!currentProductsRes.ok) {
+        throw new Error(`BigCommerce Error fetching current products (${currentProductsRes.status}): ${await currentProductsRes.text()}`);
+      }
+
+      const currentProducts = await currentProductsRes.json();
+      
+      // 2. Prepare the new products array (Existing items + New item)
+      // We must include the 'id' for existing items so they aren't deleted/duplicated
+      const updatedProducts = [
+        ...currentProducts.map((p: any) => ({
+          id: p.id,
+          // You can also include quantity/price if you want to be safe, 
+          // but BC usually just needs the ID to know it's not new.
+        })),
+        {
+          product_id: 0,
+          name: productName,
+          quantity: 1,
+          price_inc_tax: 0.00,
+          price_ex_tax: 0.00
+        }
+      ];
+
+      // 3. PUT the update to the order
+      const targetUrl = `${v2Url}/orders/${trimmedId}`;
       const payload = JSON.stringify({
-        product_id: 0,
-        name: productName,
-        quantity: 1,
-        price_inc_tax: 0.00,
-        price_ex_tax: 0.00
+        products: updatedProducts
       });
 
       const response = await fetch(targetUrl, {
-        method: 'POST',
+        method: 'PUT',
         headers: {
           'X-Auth-Token': ACCESS_TOKEN,
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          'Content-Length': payload.length.toString()
         },
         body: payload
       })
 
       if (!response.ok) {
         const errText = await response.text()
-        throw new Error(`BigCommerce Error (${response.status}) at ${targetUrl}: ${errText}`)
+        throw new Error(`BigCommerce Error (${response.status}) updating order: ${errText}`)
       }
 
       const result = await response.json()
