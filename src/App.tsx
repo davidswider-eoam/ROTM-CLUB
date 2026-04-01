@@ -53,6 +53,7 @@ function App() {
   const [incomingOrders, setIncomingOrders] = useState<any[]>([]);
   const [isFetchingBC, setIsFetchingBC] = useState(false);
   const [auditResults, setAuditResults] = useState<Record<string, string>>({});
+  const [isPushingBC, setIsPushingBC] = useState<Record<string, boolean>>({});
 
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const [viewMode, setViewMode] = useState<'shipping' | 'directory'>('shipping');
@@ -123,6 +124,44 @@ function App() {
     } catch (e) {
       console.error("Audit error:", e);
       setAuditResults(prev => ({ ...prev, [sub.id]: 'Error' }));
+    }
+  };
+
+  const pushToBigCommerce = async (sub: Subscriber) => {
+    if (!sub.order || sub.order === "INSTORE") return;
+    const cat = catalogData[selectedMonth];
+    if (!cat) {
+      alert("Assign a record to this month in the Catalog first!");
+      return;
+    }
+
+    const productName = `${fmt(selectedMonth)} ROTM - ${cat.artist} - ${cat.album}`;
+    const orderId = sub.order.toString().replace('#', '');
+
+    setIsPushingBC(prev => ({ ...prev, [sub.id]: true }));
+
+    try {
+      const { data, error } = await supabase.functions.invoke('bigcommerce-bridge', {
+        body: { 
+          action: 'add_month_item', 
+          orderId,
+          productName
+        }
+      });
+
+      if (error) throw error;
+      if (data.error) throw new Error(data.error);
+
+      // Log the success
+      logAction("BC Sync", `Added ${productName} to Order #${orderId}`, 'shipping');
+      
+      // Update local audit result to show success
+      setAuditResults(prev => ({ ...prev, [sub.id]: 'Synced' }));
+    } catch (e: any) {
+      console.error("BC Push Error:", e);
+      alert(`Failed to add to BigCommerce: ${e.message}`);
+    } finally {
+      setIsPushingBC(prev => ({ ...prev, [sub.id]: false }));
     }
   };
 
@@ -644,6 +683,29 @@ function App() {
           
           <OrderLink order={sub.order} />
           
+          {mode === 'shipping' && sub.order && sub.order !== "INSTORE" && (
+            <button 
+              style={{ 
+                background: auditResults[sub.id] === 'Synced' ? "var(--green)" : "var(--text3)", 
+                color: "#fff", 
+                border: "none", 
+                borderRadius: "4px", 
+                padding: "3px 10px", 
+                cursor: isPushingBC[sub.id] ? "default" : "pointer", 
+                fontSize: "10px", 
+                fontFamily: "DM Mono,monospace",
+                display: "flex",
+                alignItems: "center",
+                gap: 4
+              }}
+              disabled={isPushingBC[sub.id] || auditResults[sub.id] === 'Synced'}
+              onClick={(e) => { e.stopPropagation(); pushToBigCommerce(sub); }}
+            >
+              {isPushingBC[sub.id] ? <Loader2 size={10} className="animate-spin" /> : <RefreshCw size={10} />}
+              {auditResults[sub.id] === 'Synced' ? "Synced" : "Push to BC"}
+            </button>
+          )}
+
           <button 
             style={{ background: "none", border: "1px solid #2e2e2e", color: "#888", borderRadius: "4px", padding: "3px 8px", cursor: "pointer", fontSize: "10px", fontFamily: "DM Mono,monospace" }}
             onClick={(e) => { e.stopPropagation(); setDetailSub(sub); }}
@@ -1036,20 +1098,33 @@ function App() {
                   const shipping = `${order.shipping_addresses[0]?.first_name} ${order.shipping_addresses[0]?.last_name}`;
                   const isGift = billing !== shipping;
                   
+                  // Detect subscription type from products
+                  let detectedType: SubscriptionType = 'monthly';
+                  const products = order.products || [];
+                  const productNames = products.map((p: any) => p.name.toLowerCase());
+                  
+                  if (productNames.some((n: string) => n.includes('12 month'))) detectedType = '12-month';
+                  else if (productNames.some((n: string) => n.includes('6 month'))) detectedType = '6-month';
+                  else if (productNames.some((n: string) => n.includes('3 month'))) detectedType = '3-month';
+                  
                   return (
                     <div key={order.id} style={{ padding: "16px 24px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 20 }}>
                       <div style={{ flex: 1 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                           <div style={{ fontWeight: 700, fontSize: 14 }}>{shipping}</div>
                           <span className="badge" style={{ background: "var(--surface2)", color: "var(--text2)" }}>#{order.id}</span>
-                          <span className={cn("badge", order.status.toLowerCase().includes('paid') ? 'ship' : 'flag')}>
+                          <span className={cn("badge", order.status.toLowerCase().includes('paid') || order.status.toLowerCase().includes('awaiting fulfillment') ? 'ship' : 'flag')}>
                             {order.status}
                           </span>
+                          <span className="badge" style={{ background: "var(--text3)", color: "#fff" }}>{detectedType}</span>
                         </div>
                         <div style={{ fontFamily: "DM Mono,monospace", fontSize: 11, color: "var(--text3)", marginTop: 4 }}>
                           {isGift ? `Gift from ${billing}` : billing} · {order.billing_address.email}
                         </div>
                         <div style={{ fontSize: 11, color: "var(--text2)", marginTop: 4 }}>
+                          {products.map((p: any) => p.name).join(', ')}
+                        </div>
+                        <div style={{ fontSize: 10, color: "var(--text3)", marginTop: 4 }}>
                           Placed on {new Date(order.date_created).toLocaleDateString()}
                         </div>
                       </div>
@@ -1058,8 +1133,6 @@ function App() {
                         className="submit-btn" 
                         style={{ padding: "8px 16px", fontSize: 11 }}
                         onClick={() => {
-                          // Prefill the "Add" form state and switch tabs
-                          // We'll use a DOM shortcut for simplicity since the form isn't state-controlled yet
                           setActiveTab("add");
                           setTimeout(() => {
                             const bName = document.getElementById('new-billing') as HTMLInputElement;
@@ -1067,12 +1140,14 @@ function App() {
                             const rName = document.getElementById('new-recipient') as HTMLInputElement;
                             const rEmail = document.getElementById('new-recipient-email') as HTMLInputElement;
                             const orderNum = document.getElementById('new-order') as HTMLInputElement;
+                            const typeSel = document.getElementById('new-type') as HTMLSelectElement;
                             
                             if (bName) bName.value = billing;
                             if (bEmail) bEmail.value = order.billing_address.email;
                             if (rName) rName.value = shipping;
-                            if (rEmail) rEmail.value = order.billing_address.email; // BC often only has one email
+                            if (rEmail) rEmail.value = order.billing_address.email;
                             if (orderNum) orderNum.value = order.id.toString();
+                            if (typeSel) typeSel.value = detectedType;
                           }, 100);
                         }}
                       >
