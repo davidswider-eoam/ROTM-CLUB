@@ -86,6 +86,15 @@ serve(async (req) => {
           }
         })
         fullOrder.shipping_addresses = await shipRes.json()
+
+        // NEW: Fetch line items (products) to see what subscription they bought
+        const productsRes = await fetch(`${v2Url}/orders/${o.id}/products`, {
+          headers: {
+            'X-Auth-Token': ACCESS_TOKEN,
+            'Accept': 'application/json',
+          }
+        })
+        fullOrder.products = await productsRes.json()
         
         return fullOrder
       }))
@@ -112,6 +121,38 @@ serve(async (req) => {
 
       const order = await response.json()
       return new Response(JSON.stringify(order), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200
+      })
+    }
+
+    // NEW ACTION: Add a $0.00 ROTM product to a BigCommerce order
+    if (action === 'add_month_item' && orderId) {
+      const { productName } = body;
+      if (!productName) throw new Error("Missing productName");
+
+      const response = await fetch(`${v2Url}/orders/${orderId}/products`, {
+        method: 'POST',
+        headers: {
+          'X-Auth-Token': ACCESS_TOKEN,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+          name: productName,
+          quantity: 1,
+          price_inc_tax: 0.00,
+          price_ex_tax: 0.00
+        })
+      })
+
+      if (!response.ok) {
+        const errText = await response.text()
+        throw new Error(`Failed to add product: ${errText}`)
+      }
+
+      const result = await response.json()
+      return new Response(JSON.stringify(result), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200
       })
