@@ -28,7 +28,7 @@ import { twMerge } from 'tailwind-merge';
 import './App.css';
 import { MONTHS } from './constants';
 import { MUSIC_QUOTES } from './quotes';
-import type { Subscriber, Catalog, HistoryEntry } from './types';
+import type { Subscriber, Catalog, HistoryEntry, SubscriptionType } from './types';
 import { isActiveForMonth, isNewThisMonth, isLapsingThisMonth, statusFor, fmt, getCurrentMonth } from './utils';
 import logo from './assets/logo.png';
 import { supabase } from './supabase';
