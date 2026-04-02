@@ -1261,6 +1261,19 @@ function App() {
                 </button>
                 <button 
                   className="submit-btn" 
+                  style={{ padding: "8px 16px", fontSize: 11, background: "#3b82f6", display: "flex", alignItems: "center", gap: 6 }}
+                  onClick={() => {
+                    const pickupEmails = activeSubs
+                      .filter(s => s.delivery === "pickup")
+                      .map(s => s.billingEmail || s.recipientEmail)
+                      .filter(Boolean);
+                    copyEmails(pickupEmails, "Pickup Subscriber");
+                  }}
+                >
+                  Copy Pickup Emails
+                </button>
+                <button 
+                  className="submit-btn" 
                   style={{ padding: "8px 16px", fontSize: 11, background: "var(--red)", display: "flex", alignItems: "center", gap: 6 }}
                   onClick={() => {
                     const lapsingEmails = activeSubs
