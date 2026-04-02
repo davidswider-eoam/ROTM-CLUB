@@ -698,6 +698,7 @@ function App() {
             .recipient { font-weight: bold; font-size: 14px; }
             .order { font-family: monospace; font-size: 12px; color: #444; }
             .notes { font-size: 11px; color: #666; font-style: italic; }
+            .badge-last { background: #fee2e2; color: #b91c1c; padding: 2px 4px; border-radius: 3px; font-size: 9px; text-transform: uppercase; font-weight: bold; margin-left: 6px; border: 1px solid #fecaca; }
             @media print {
               .no-print { display: none; }
               body { padding: 0; }
@@ -726,17 +727,23 @@ function App() {
               </tr>
             </thead>
             <tbody>
-              ${pickups.map(s => `
+              ${pickups.map(s => {
+                const isLast = isLapsingThisMonth(s, selectedMonth);
+                return `
                 <tr>
                   <td><div class="checkbox"></div></td>
                   <td>
-                    <div class="recipient">${s.recipient}</div>
+                    <div class="recipient">
+                      ${s.recipient}
+                      ${isLast ? '<span class="badge-last">Last Record</span>' : ''}
+                    </div>
                     ${s.recipient !== s.billing ? `<small>Billing: ${s.billing}</small>` : ''}
                   </td>
                   <td class="order">#${s.order || '—'}</td>
                   <td class="notes">${s.notes || ''}</td>
                 </tr>
-              `).join('')}
+              `;
+              }).join('')}
             </tbody>
           </table>
           
