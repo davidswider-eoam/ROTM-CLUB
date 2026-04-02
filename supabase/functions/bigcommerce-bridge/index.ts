@@ -146,63 +146,6 @@ serve(async (req) => {
       })
     }
 
-    // 8. ACTION: Add a $0.00 ROTM product to a BigCommerce order
-    if (action === 'add_month_item' && orderId) {
-      const { productName } = body;
-      if (!productName) throw new Error("Missing productName");
-
-      const trimmedId = orderId.toString().trim().replace('#', '');
-      
-      // 1. Fetch Shipping Addresses to get a valid order_address_id
-      const shipRes = await fetch(`${v2Url}/orders/${trimmedId}/shipping_addresses`, {
-        headers: {
-          'X-Auth-Token': ACCESS_TOKEN,
-          'Accept': 'application/json',
-        }
-      });
-
-      if (!shipRes.ok) {
-        throw new Error(`BigCommerce Error fetching addresses (${shipRes.status}): ${await shipRes.text()}`);
-      }
-
-      const addresses = await shipRes.json();
-      if (!addresses || addresses.length === 0) {
-        throw new Error("Order has no shipping addresses; cannot add product.");
-      }
-      const addressId = addresses[0].id;
-
-      // 2. POST the new product to the order (Custom item = no product_id)
-      const targetUrl = `${v2Url}/orders/${trimmedId}/products`;
-      const payload = JSON.stringify({
-        order_address_id: addressId,
-        name: productName,
-        quantity: 1,
-        price_inc_tax: 0.00,
-        price_ex_tax: 0.00
-      });
-
-      const response = await fetch(targetUrl, {
-        method: 'POST',
-        headers: {
-          'X-Auth-Token': ACCESS_TOKEN,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: payload
-      })
-
-      if (!response.ok) {
-        const errText = await response.text()
-        throw new Error(`BigCommerce Error (${response.status}) adding product: ${errText}`)
-      }
-
-      const result = await response.json()
-      return new Response(JSON.stringify(result), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200
-      })
-    }
-
     throw new Error(`Invalid action: ${action}`)
 
   } catch (error) {

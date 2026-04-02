@@ -53,7 +53,6 @@ function App() {
   const [incomingOrders, setIncomingOrders] = useState<any[]>([]);
   const [isFetchingBC, setIsFetchingBC] = useState(false);
   const [auditResults, setAuditResults] = useState<Record<string, any>>({});
-  const [isPushingBC, setIsPushingBC] = useState<Record<string, boolean>>({});
 
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const [viewMode, setViewMode] = useState<'shipping' | 'directory'>('shipping');
@@ -131,44 +130,6 @@ function App() {
     } catch (e: any) {
       console.error("Audit error:", e);
       setAuditResults(prev => ({ ...prev, [sub.id]: { status: 'Error' } }));
-    }
-  };
-
-  const pushToBigCommerce = async (sub: Subscriber) => {
-    if (!sub.order || sub.order === "INSTORE") return;
-    const cat = catalogData[selectedMonth];
-    if (!cat) {
-      alert("Assign a record to this month in the Catalog first!");
-      return;
-    }
-
-    const productName = `${fmt(selectedMonth)} ROTM - ${cat.artist} - ${cat.album}`;
-    const orderId = sub.order.toString().replace('#', '');
-
-    setIsPushingBC(prev => ({ ...prev, [sub.id]: true }));
-
-    try {
-      const { data, error } = await supabase.functions.invoke('bigcommerce-bridge', {
-        body: { 
-          action: 'add_month_item', 
-          orderId,
-          productName
-        }
-      });
-
-      if (error) throw error;
-      if (data.error) throw new Error(data.error);
-
-      // Log the success
-      logAction("BC Sync", `Added ${productName} to Order #${orderId}`, 'shipping');
-      
-      // Update local audit result to show success
-      setAuditResults(prev => ({ ...prev, [sub.id]: { status: 'Synced' } }));
-    } catch (e: any) {
-      console.error("BC Push Error:", e);
-      alert(`Failed to add to BigCommerce: ${e.message}`);
-    } finally {
-      setIsPushingBC(prev => ({ ...prev, [sub.id]: false }));
     }
   };
 
@@ -669,7 +630,7 @@ function App() {
 
           {auditResults[sub.id] && (
             <span 
-              className={cn("badge", (auditResults[sub.id].status === 'Shipped' || auditResults[sub.id].status === 'Completed' || auditResults[sub.id].status === 'Synced') ? 'ship' : 'flag')}
+              className={cn("badge", (auditResults[sub.id].status === 'Shipped' || auditResults[sub.id].status === 'Completed') ? 'ship' : 'flag')}
               title={auditResults[sub.id].tracking ? `Tracking: ${auditResults[sub.id].tracking}` : undefined}
             >
               BC: {auditResults[sub.id].status}
@@ -698,29 +659,6 @@ function App() {
           
           <OrderLink order={sub.order} />
           
-          {mode === 'shipping' && sub.order && sub.order !== "INSTORE" && (
-            <button 
-              style={{ 
-                background: auditResults[sub.id]?.status === 'Synced' ? "var(--green)" : "var(--text3)", 
-                color: "#fff", 
-                border: "none", 
-                borderRadius: "4px", 
-                padding: "3px 10px", 
-                cursor: isPushingBC[sub.id] ? "default" : "pointer", 
-                fontSize: "10px", 
-                fontFamily: "DM Mono,monospace",
-                display: "flex",
-                alignItems: "center",
-                gap: 4
-              }}
-              disabled={isPushingBC[sub.id] || auditResults[sub.id]?.status === 'Synced'}
-              onClick={(e) => { e.stopPropagation(); pushToBigCommerce(sub); }}
-            >
-              {isPushingBC[sub.id] ? <Loader2 size={10} className="animate-spin" /> : <RefreshCw size={10} />}
-              {auditResults[sub.id]?.status === 'Synced' ? "Synced" : "Push to BC"}
-            </button>
-          )}
-
           <button 
             style={{ background: "none", border: "1px solid #2e2e2e", color: "#888", borderRadius: "4px", padding: "3px 8px", cursor: "pointer", fontSize: "10px", fontFamily: "DM Mono,monospace" }}
             onClick={(e) => { e.stopPropagation(); setDetailSub(sub); }}
