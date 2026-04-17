@@ -1136,8 +1136,15 @@ function App() {
         {/* ── CATALOG ── */}
         {activeTab === "catalog" && (
           <>
-            <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--border)" }}>
+            <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div style={{ fontWeight: 800, fontSize: 16 }}>Monthly Catalog</div>
+              <button 
+                onClick={addMonth}
+                className="submit-btn" 
+                style={{ width: "auto", padding: "8px 16px", fontSize: 11, display: "flex", alignItems: "center", gap: 6 }}
+              >
+                <Plus size={14} /> Add Next Month
+              </button>
             </div>
             {dbMonths.map(mo => {
               const rec = catalogData[mo];
