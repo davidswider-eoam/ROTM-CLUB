@@ -30,7 +30,35 @@ export function statusFor(sub: Subscriber, month: string = getCurrentMonth()): S
 }
 
 export function fmt(ym: string | null): string {
-  if (!ym) return "Open";
+  if (!ym || ym.includes("Invalid")) return "Open";
   const [y, m] = ym.split("-");
-  return new Date(+y, +m - 1).toLocaleString("en-US", { month: "short", year: "numeric" });
+  if (!y || !m) return "Open";
+  const d = new Date(+y, +m - 1);
+  if (isNaN(d.getTime())) return "Open";
+  return d.toLocaleString("en-US", { month: "short", year: "numeric" });
+}
+
+export function getDaysUntilRenewal(signupDateStr?: string): number | null {
+  if (!signupDateStr) return null;
+  
+  // BigCommerce signup_date is usually YYYY-MM-DD
+  const signupDate = new Date(signupDateStr);
+  if (isNaN(signupDate.getTime())) return null;
+  
+  const signupDay = signupDate.getDate();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0); // Reset time for accurate day calculation
+
+  // 1. Try renewal this month
+  let nextRenewal = new Date(today.getFullYear(), today.getMonth(), signupDay);
+  
+  // 2. If it passed this month, move to next month
+  if (nextRenewal < today) {
+    nextRenewal = new Date(today.getFullYear(), today.getMonth() + 1, signupDay);
+  }
+  
+  const diffTime = nextRenewal.getTime() - today.getTime();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  
+  return diffDays;
 }

@@ -29,7 +29,7 @@ import './App.css';
 import { MONTHS } from './constants';
 import { MUSIC_QUOTES } from './quotes';
 import type { Subscriber, Catalog, HistoryEntry, SubscriptionType } from './types';
-import { isActiveForMonth, isNewThisMonth, isLapsingThisMonth, statusFor, fmt, getCurrentMonth } from './utils';
+import { isActiveForMonth, isNewThisMonth, isLapsingThisMonth, statusFor, fmt, getCurrentMonth, getDaysUntilRenewal } from './utils';
 import logo from './assets/logo.png';
 import { supabase } from './supabase';
 import SupabaseMigration from './SupabaseMigration';
@@ -618,15 +618,27 @@ function App() {
           {isNew && <span className="badge new">New</span>}
           {isLapsing && <span className="badge lapsing">Last</span>}
           
-          {isMonthly && sub.signupDate && mode === 'directory' && (
-            <span className="badge" style={{ background: "#f0fdf4", color: "var(--green)", border: "1px solid #dcfce7" }}>
-              Day {new Date(sub.signupDate).getDate()}
-            </span>
-          )}
-          
-          {isMonthly && mode === 'directory' && (
-            <span className="badge" style={{ background: "#eef2ff", color: "var(--text3)", border: "1px solid var(--border)" }}>Watch</span>
-          )}
+          {isMonthly && sub.signupDate && mode === 'directory' && (() => {
+            const daysUntil = getDaysUntilRenewal(sub.signupDate);
+            if (daysUntil === null) return null;
+            
+            const isVerySoon = daysUntil <= 3;
+            const isSoon = daysUntil <= 7;
+            
+            return (
+              <span 
+                className="badge" 
+                style={{ 
+                  background: isVerySoon ? "#fee2e2" : (isSoon ? "#fffbeb" : "#f0fdf4"), 
+                  color: isVerySoon ? "#b91c1c" : (isSoon ? "#b45309" : "var(--green)"), 
+                  border: `1px solid ${isVerySoon ? "#fecaca" : (isSoon ? "#fde68a" : "#dcfce7")}`,
+                  fontWeight: 600
+                }}
+              >
+                {daysUntil === 0 ? "Renews today!" : `Renews in ${daysUntil} ${daysUntil === 1 ? 'day' : 'days'}`}
+              </span>
+            );
+          })()}
 
           {auditResults[sub.id] && (
             <span 
