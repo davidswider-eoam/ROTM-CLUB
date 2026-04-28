@@ -851,7 +851,7 @@ function App() {
               {dbMonths.map(mo => (
                 <button 
                   key={mo} 
-                  className={cn("month-btn", selectedMonth === mo && "active")} 
+                  className={cn("month-btn", selectedMonth === mo && "active", mo === getCurrentMonth() && "current-month")} 
                   onClick={() => setSelectedMonth(mo)}
                 >
                   {fmt(mo)}

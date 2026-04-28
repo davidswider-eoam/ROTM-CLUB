@@ -106,10 +106,10 @@
 .month-btn {
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: 13px;
-  padding: 6px 14px;
-  border-radius: 6px;
-  border: 1px solid var(--border2);
+  font-size: 15px;
+  padding: 10px 20px;
+  border-radius: 8px;
+  border: 2px solid var(--border2);
   background: none;
   color: var(--text2);
   cursor: pointer;
@@ -126,6 +126,16 @@
   background: var(--text3);
   color: #ffffff;
   border-color: var(--text3);
+}
+
+.month-btn.current-month {
+  border-color: #3b82f6; /* A distinct blue */
+  box-shadow: 0 0 0 1px #3b82f6;
+}
+
+.month-btn.current-month:not(.active) {
+  background: #eff6ff;
+  color: #1e40af;
 }
 
 .album-pill {
