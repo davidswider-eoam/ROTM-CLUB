@@ -1482,6 +1482,54 @@ function App() {
               
               <SupabaseMigration />
 
+              <div style={{ marginTop: 24, padding: 16, background: "#fffbeb", borderRadius: 8, border: "1px solid #fde68a" }}>
+                <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, color: "#92400e" }}>Emergency Data Fix</div>
+                <div style={{ fontSize: 12, color: "#92400e", lineHeight: 1.6, marginBottom: 12 }}>
+                  Use this to move shipping status from <strong>May 2026</strong> back to <strong>April 2026</strong>. 
+                  This will clear all May marks and set April marks for those same subscribers.
+                </div>
+                <button 
+                  className="submit-btn" 
+                  style={{ background: "#d97706", width: "auto", padding: "8px 16px" }}
+                  onClick={async () => {
+                    if (!confirm("Are you sure you want to swap May 2026 shipping status for April 2026? This cannot be undone.")) return;
+                    
+                    setIsBulkLoading(true);
+                    try {
+                      // 1. Fetch all subscribers
+                      const { data: subs, error } = await supabase.from('subscribers').select('*');
+                      if (error) throw error;
+                      
+                      let fixedCount = 0;
+                      for (const sub of subs) {
+                        let months: string[] = sub.shipped_months || [];
+                        if (months.includes('2026-05')) {
+                          // Swap May for April
+                          months = months.filter(m => m !== '2026-05');
+                          if (!months.includes('2026-04')) months.push('2026-04');
+                          
+                          const { error: updateError } = await supabase.from('subscribers')
+                            .update({ shipped_months: months })
+                            .eq('id', sub.id);
+                          
+                          if (updateError) console.error("Update error for sub", sub.id, updateError);
+                          else fixedCount++;
+                        }
+                      }
+                      
+                      alert(`Fix complete! Successfully updated ${fixedCount} subscribers. Please refresh the page.`);
+                      fetchData(); // Refresh UI
+                    } catch (e: any) {
+                      alert("Error running fix: " + e.message);
+                    } finally {
+                      setIsBulkLoading(false);
+                    }
+                  }}
+                >
+                  Run Shipping Fix (May → April)
+                </button>
+              </div>
+
               <div style={{ marginTop: 24, padding: 16, background: "var(--surface2)", borderRadius: 8, border: "1px solid var(--border)" }}>
                 <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>About this App</div>
                 <div style={{ fontSize: 12, color: "var(--text2)", lineHeight: 1.6 }}>
