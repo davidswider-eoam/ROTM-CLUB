@@ -17,6 +17,7 @@ export interface Subscriber {
   flag: boolean;
   signupDate?: string; // YYYY-MM-DD
   shipped_months?: string[]; // Array of YYYY-MM strings
+  monthly_notes?: Record<string, string>; // Month-specific notes {"YYYY-MM": "Note"}
 }
 
 export interface CatalogEntry {

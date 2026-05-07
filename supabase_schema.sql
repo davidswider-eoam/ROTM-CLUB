@@ -17,6 +17,7 @@ create table subscribers (
   is_flagged boolean default false,
   signup_date date,
   shipped_months text[] default '{}', -- Array of 'YYYY-MM' strings
+  monthly_notes jsonb default '{}',    -- Month-specific notes {"YYYY-MM": "Note"}
   created_at timestamptz default now()
 );
 

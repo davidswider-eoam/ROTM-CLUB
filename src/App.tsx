@@ -20,7 +20,8 @@ import {
   RefreshCw,
   Sparkles,
   Loader2,
-  Inbox
+  Inbox,
+  AlertTriangle
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -609,6 +610,23 @@ function App() {
               ? (sub.billingEmail || "no email") 
               : (isGiftSub ? `gift from ${sub.billing}` : (sub.billingEmail || ""))}
           </div>
+          {sub.monthly_notes?.[selectedMonth] && (
+            <div style={{ 
+              marginTop: 4, 
+              fontSize: 11, 
+              color: "#b45309", 
+              background: "#fffbeb", 
+              padding: "4px 8px", 
+              borderRadius: 4, 
+              border: "1px solid #fde68a",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6
+            }}>
+              <AlertTriangle size={10} />
+              <strong>{fmt(selectedMonth)} Note:</strong> {sub.monthly_notes[selectedMonth]}
+            </div>
+          )}
         </div>
 
         <div className="sub-meta">
@@ -1570,6 +1588,37 @@ function App() {
                 >
                   <Flag size={11} style={{ marginRight: 6 }} fill={detailSub.flag ? "#fff" : "none"} />
                   {detailSub.flag ? "Flagged" : "Flag for Attention"}
+                </button>
+              </div>
+
+              {/* Monthly Specific Note */}
+              <div style={{ marginTop: 24 }}>
+                <div className="detail-section-label" style={{ color: "#b45309" }}>Monthly Shipping Note ({fmt(selectedMonth)})</div>
+                <div style={{ fontSize: 10, color: "#92400e", marginBottom: 8 }}>This note will only appear for the selected month.</div>
+                <textarea 
+                  className="form-input" 
+                  style={{ minHeight: 60, resize: 'vertical', fontSize: 11, fontFamily: 'var(--font-mono)', marginBottom: 12, width: '100%', boxSizing: 'border-box', borderColor: "#fde68a", background: "#fffbeb" }}
+                  defaultValue={detailSub.monthly_notes?.[selectedMonth] || ""} 
+                  id={`edit-monthly-note-${detailSub.id}`}
+                  placeholder={`Special instructions for ${fmt(selectedMonth)} only...`}
+                />
+                <button 
+                  className="submit-btn"
+                  style={{ width: '100%', padding: '6px 12px', fontSize: 11, background: "#d97706" }}
+                  onClick={async () => {
+                    const newNote = (document.getElementById(`edit-monthly-note-${detailSub.id}`) as HTMLTextAreaElement).value;
+                    const updatedMonthlyNotes = { ...(detailSub.monthly_notes || {}), [selectedMonth]: newNote };
+                    
+                    // Optimistic
+                    setSubscribers(prev => prev.map(s => s.id === detailSub.id ? { ...s, monthly_notes: updatedMonthlyNotes } : s));
+                    setDetailSub(prev => prev ? { ...prev, monthly_notes: updatedMonthlyNotes } : null);
+                    
+                    await supabase.from('subscribers').update({ monthly_notes: updatedMonthlyNotes }).eq('id', detailSub.id);
+                    logAction("Monthly Note", `Note added for ${detailSub.recipient} in ${fmt(selectedMonth)}`, 'subscriber');
+                    alert("Monthly note saved.");
+                  }}
+                >
+                  Save Monthly Note
                 </button>
               </div>
             </div>
