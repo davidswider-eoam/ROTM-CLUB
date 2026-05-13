@@ -159,7 +159,8 @@ function App() {
         notes: s.notes,
         flag: s.is_flagged,
         signupDate: s.signup_date,
-        shipped_months: s.shipped_months || []
+        shipped_months: s.shipped_months || [],
+        monthly_notes: s.monthly_notes || {}
       })));
     }
 
