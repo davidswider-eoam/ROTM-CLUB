@@ -40,7 +40,7 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-type Tab = 'dashboard' | 'incoming' | 'catalog' | 'contacts' | 'add' | 'history' | 'settings';
+type Tab = 'dashboard' | 'incoming' | 'catalog' | 'contacts' | 'add' | 'history' | 'settings' | 'attention';
 type SubTab = 'all' | 'term' | 'monthly' | 'flagged';
 
 
@@ -869,6 +869,14 @@ function App() {
         </div>
         {[
           { key: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={14} /> },
+          { key: 'attention', label: 'Attention', icon: (
+            <div style={{ position: 'relative' }}>
+              <AlertTriangle size={14} />
+              {subscribers.filter(s => isActiveForMonth(s, selectedMonth) && (s.flag || s.monthly_notes?.[selectedMonth] || isLapsingThisMonth(s, selectedMonth))).length > 0 && (
+                <div style={{ position: 'absolute', top: -4, right: -4, width: 8, height: 8, background: 'var(--red)', borderRadius: '50%', border: '2px solid var(--surface)' }} />
+              )}
+            </div>
+          ) },
           { key: 'incoming', label: 'Incoming', icon: <Inbox size={14} /> },
           { key: 'catalog', label: 'Catalog', icon: <Disc size={14} /> },
           { key: 'history', label: 'History', icon: <HistoryIcon size={14} /> },
@@ -991,46 +999,6 @@ function App() {
 
             {viewMode === 'shipping' ? (
               <>
-                {/* Monthly Action Center */}
-                {(() => {
-                  const needsAttention = activeSubs.filter(s => 
-                    s.flag || 
-                    s.monthly_notes?.[selectedMonth] || 
-                    isLapsingThisMonth(s, selectedMonth)
-                  );
-                  
-                  if (needsAttention.length === 0) return null;
-                  
-                  return (
-                    <div style={{ margin: "20px 24px 0", background: "var(--surface2)", border: "1px solid var(--border2)", borderRadius: 12, overflow: 'hidden' }}>
-                      <div style={{ background: "rgba(180, 83, 9, 0.08)", padding: "12px 20px", borderBottom: "1px solid var(--border2)", display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <AlertTriangle size={16} color="#b45309" />
-                        <div style={{ fontWeight: 800, fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.05em', color: "#b45309" }}>Monthly Action Center — {needsAttention.length} Items</div>
-                      </div>
-                      <div style={{ padding: "8px 0" }}>
-                        {needsAttention.map((s, idx) => (
-                          <div key={s.id} style={{ padding: "8px 20px", display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: idx === needsAttention.length - 1 ? "none" : "1px solid var(--border)" }}>
-                            <div>
-                              <div style={{ fontWeight: 700, fontSize: 12 }}>{s.recipient}</div>
-                              <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-                                {s.flag && <span className="badge flag" style={{ fontSize: 9 }}>Flagged</span>}
-                                {s.monthly_notes?.[selectedMonth] && <span className="badge pickup" style={{ fontSize: 9, background: '#fff7ed' }}>Has Note</span>}
-                                {isLapsingThisMonth(s, selectedMonth) && <span className="badge lapsing" style={{ fontSize: 9 }}>Last Record</span>}
-                              </div>
-                            </div>
-                            <button 
-                              style={{ background: "none", border: "1px solid var(--border2)", borderRadius: 4, padding: "4px 10px", fontSize: 10, cursor: 'pointer', fontFamily: 'var(--font-mono)' }}
-                              onClick={() => setDetailSub(s)}
-                            >
-                              Resolve
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })()}
-
                 <div className="checklist-header" style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <div 
@@ -1161,6 +1129,44 @@ function App() {
                 )}
               </>
             )}
+          </>
+        )}
+
+        {/* ── ATTENTION ── */}
+        {activeTab === "attention" && (
+          <>
+            <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 16 }}>Monthly Action Center</div>
+                <div style={{ fontFamily: "DM Mono,monospace", fontSize: 11, color: "var(--text3)", marginTop: 4 }}>Subscribers needing special attention for {fmt(selectedMonth)}</div>
+              </div>
+            </div>
+
+            {(() => {
+              const needsAttention = subscribers.filter(s => 
+                isActiveForMonth(s, selectedMonth) && (
+                  s.flag || 
+                  s.monthly_notes?.[selectedMonth] || 
+                  isLapsingThisMonth(s, selectedMonth)
+                )
+              );
+              
+              if (needsAttention.length === 0) {
+                return (
+                  <div style={{ padding: "80px 24px", textAlign: "center", color: "var(--text3)", fontFamily: "DM Mono,monospace" }}>
+                    No items needing attention this month. Nice work!
+                  </div>
+                );
+              }
+              
+              return (
+                <div style={{ padding: 0 }}>
+                  {needsAttention.map((s) => (
+                    <SubRow key={s.id} sub={s} mode="directory" />
+                  ))}
+                </div>
+              );
+            })()}
           </>
         )}
 
