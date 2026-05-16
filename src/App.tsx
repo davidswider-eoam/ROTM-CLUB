@@ -181,7 +181,8 @@ function App() {
           predictedNew: c.predicted_new,
           damageBuffer: c.damage_buffer,
           shopExtras: c.shop_extras,
-          jxnSubs: c.jxn_subs
+          jxnSubs: c.jxn_subs,
+          workflow: c.workflow || {}
         };
       });
       
@@ -496,12 +497,13 @@ function App() {
     predictedNew: number,
     damageBuffer: number,
     shopExtras: number,
-    jxnSubs: number
+    jxnSubs: number,
+    workflow?: Record<string, boolean>
   ) {
     // Optimistic
     setCatalogData(prev => ({
       ...prev,
-      [month]: { artist, album, label, contact, notes, wholesaleCost, predictedNew, damageBuffer, shopExtras, jxnSubs }
+      [month]: { artist, album, label, contact, notes, wholesaleCost, predictedNew, damageBuffer, shopExtras, jxnSubs, workflow: workflow || prev[month]?.workflow || {} }
     }));
     setDetailCatalogMonth(null);
 
@@ -517,7 +519,8 @@ function App() {
       predicted_new: predictedNew,
       damage_buffer: damageBuffer,
       shop_extras: shopExtras,
-      jxn_subs: jxnSubs
+      jxn_subs: jxnSubs,
+      workflow: workflow || catalogData[month]?.workflow || {}
     }, { onConflict: 'month' });
 
     if (error) {
@@ -533,6 +536,59 @@ function App() {
       alert("Catalog updated successfully!");
     }
   }
+
+  async function toggleWorkflowItem(month: string, item: string) {
+    const current = catalogData[month]?.workflow || {};
+    const updated = { ...current, [item]: !current[item] };
+    
+    // Optimistic
+    setCatalogData(prev => ({
+      ...prev,
+      [month]: { ...prev[month], workflow: updated }
+    }));
+
+    await supabase.from('catalog').update({ workflow: updated }).eq('month', month);
+    logAction("Workflow Update", `${item} toggled for ${fmt(month)}`, 'catalog');
+  }
+
+  const downloadShippingCSV = () => {
+    // 1. Filter for "Ship" subscribers who haven't shipped yet
+    const toExport = activeSubs.filter(s => s.delivery === 'ship' && !shipped.has(s.id));
+    
+    if (toExport.length === 0) {
+      alert("No pending shipments found to export.");
+      return;
+    }
+
+    // 2. Define headers
+    const headers = ["Order ID", "Recipient Name", "Recipient Email", "Billing Name", "Billing Email", "Notes", "Monthly Note"];
+    
+    // 3. Create CSV rows
+    const rows = toExport.map(s => [
+      `"${s.order || ''}"`,
+      `"${s.recipient}"`,
+      `"${s.recipientEmail || ''}"`,
+      `"${s.billing}"`,
+      `"${s.billingEmail || ''}"`,
+      `"${(s.notes || '').replace(/"/g, '""')}"`,
+      `"${(s.monthly_notes?.[selectedMonth] || '').replace(/"/g, '""')}"`
+    ]);
+
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(r => r.join(","))
+    ].join("\n");
+
+    // 4. Trigger download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `ROTM-Shipping-${selectedMonth}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const getBCOrderLink = (orderNum: string) => {
     if (!bcStoreUrl || !orderNum || orderNum === "INSTORE") return null;
@@ -935,6 +991,46 @@ function App() {
 
             {viewMode === 'shipping' ? (
               <>
+                {/* Monthly Action Center */}
+                {(() => {
+                  const needsAttention = activeSubs.filter(s => 
+                    s.flag || 
+                    s.monthly_notes?.[selectedMonth] || 
+                    isLapsingThisMonth(s, selectedMonth)
+                  );
+                  
+                  if (needsAttention.length === 0) return null;
+                  
+                  return (
+                    <div style={{ margin: "20px 24px 0", background: "var(--surface2)", border: "1px solid var(--border2)", borderRadius: 12, overflow: 'hidden' }}>
+                      <div style={{ background: "rgba(180, 83, 9, 0.08)", padding: "12px 20px", borderBottom: "1px solid var(--border2)", display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <AlertTriangle size={16} color="#b45309" />
+                        <div style={{ fontWeight: 800, fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.05em', color: "#b45309" }}>Monthly Action Center — {needsAttention.length} Items</div>
+                      </div>
+                      <div style={{ padding: "8px 0" }}>
+                        {needsAttention.map((s, idx) => (
+                          <div key={s.id} style={{ padding: "8px 20px", display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: idx === needsAttention.length - 1 ? "none" : "1px solid var(--border)" }}>
+                            <div>
+                              <div style={{ fontWeight: 700, fontSize: 12 }}>{s.recipient}</div>
+                              <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                                {s.flag && <span className="badge flag" style={{ fontSize: 9 }}>Flagged</span>}
+                                {s.monthly_notes?.[selectedMonth] && <span className="badge pickup" style={{ fontSize: 9, background: '#fff7ed' }}>Has Note</span>}
+                                {isLapsingThisMonth(s, selectedMonth) && <span className="badge lapsing" style={{ fontSize: 9 }}>Last Record</span>}
+                              </div>
+                            </div>
+                            <button 
+                              style={{ background: "none", border: "1px solid var(--border2)", borderRadius: 4, padding: "4px 10px", fontSize: 10, cursor: 'pointer', fontFamily: 'var(--font-mono)' }}
+                              onClick={() => setDetailSub(s)}
+                            >
+                              Resolve
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 <div className="checklist-header" style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <div 
@@ -957,6 +1053,13 @@ function App() {
                     />
                   </div>
                   <div className="progress-label">{shippedCount} of {totalToShip} shipped</div>
+                  
+                  <button 
+                    onClick={downloadShippingCSV}
+                    style={{ background: "var(--surface2)", border: "1px solid var(--border2)", borderRadius: 6, padding: "6px 12px", fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontFamily: "var(--font-mono)", color: "var(--text3)" }}
+                  >
+                    <Package size={12} /> Export CSV
+                  </button>
                 </div>
                 <div className="filter-bar">
                   {[["all", "All"], ["unshipped", "Unshipped"], ["pickup", "Pickup"], ["flagged", "Flagged"]].map(([k, l]) => (
@@ -1200,8 +1303,28 @@ function App() {
                           <span style={{ fontWeight: 600, fontSize: 11, color: "var(--green)", marginTop: 2 }}>
                             Est. Retail Total: ${(totalCost / 0.6).toFixed(2)}
                           </span>
-                        </div>
-                      </div>
+                          </div>
+                          </div>
+
+                          {/* Shop Operations Checklist */}
+                          <div style={{ minWidth: 160, padding: "0 16px", borderLeft: "1px solid var(--border)", display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          <div style={{ fontFamily: "DM Mono,monospace", fontSize: 9, textTransform: 'uppercase', color: 'var(--text3)', letterSpacing: '0.05em', marginBottom: 2 }}>Workflow</div>
+                          {[
+                          { id: 'ordered', label: 'Ordered' },
+                          { id: 'received', label: 'Received' },
+                          { id: 'printed', label: 'Newsletters' },
+                          { id: 'audited', label: 'Audited' }
+                          ].map(item => (
+                            <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} onClick={() => toggleWorkflowItem(mo, item.id)}>
+                              <div className={cn("check-box", rec?.workflow?.[item.id] && "checked")} style={{ width: 14, height: 14, borderWidth: 1, borderRadius: 3, margin: 0 }}>
+                                {rec?.workflow?.[item.id] && <Check size={10} strokeWidth={4} color="#fff" />}
+                              </div>
+                              <span style={{ fontSize: 10, fontWeight: 600, color: rec?.workflow?.[item.id] ? "var(--text)" : "var(--text3)" }}>{item.label}</span>
+                            </div>
+                          ))}
+
+                          </div>
+
                     </>
                   ) : (
                     <div style={{ fontFamily: "DM Mono,monospace", fontSize: 11, color: "var(--text3)", fontStyle: "italic", flex: 1 }}>No record assigned</div>

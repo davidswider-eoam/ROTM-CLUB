@@ -31,6 +31,7 @@ export interface CatalogEntry {
   damageBuffer?: number; // percentage
   shopExtras?: number;
   jxnSubs?: number;
+  workflow?: Record<string, boolean>;
 }
 
 export type Catalog = Record<string, CatalogEntry>;

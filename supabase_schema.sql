@@ -34,6 +34,7 @@ create table catalog (
   damage_buffer integer default 5,
   shop_extras integer default 0,
   jxn_subs integer default 0,
+  workflow jsonb default '{}',          -- Monthly shop workflow checklist
   updated_at timestamptz default now()
 );
 
