@@ -66,6 +66,7 @@ function App() {
   const [detailCatalogMonth, setDetailCatalogMonth] = useState<string | null>(null);
   const [isGift, setIsGift] = useState(false);
   const [bcStoreUrl, setBcStoreUrl] = useState(() => localStorage.getItem('bcStoreUrl') || "");
+  const [renewalUrl, setRenewalUrl] = useState(() => localStorage.getItem('renewalUrl') || "");
   const searchRef = useRef<HTMLInputElement>(null);
 
   const zenQuote = useMemo(() => {
@@ -75,6 +76,10 @@ function App() {
   useEffect(() => {
     localStorage.setItem('bcStoreUrl', bcStoreUrl);
   }, [bcStoreUrl]);
+
+  useEffect(() => {
+    localStorage.setItem('renewalUrl', renewalUrl);
+  }, [renewalUrl]);
 
   const fetchIncomingOrders = async () => {
     setIsFetchingBC(true);
@@ -691,6 +696,20 @@ function App() {
             <span className="sub-note" title={sub.notes}>⚑ {sub.notes}</span>}
           
           {isNew && <span className="badge new">New</span>}
+          {isLapsing && (
+            <span 
+              className="badge" 
+              style={{ 
+                background: "#fef3c7", 
+                color: "#92400e", 
+                border: "1px solid #fcd34d", 
+                fontWeight: 800,
+                boxShadow: "0 0 8px rgba(245, 158, 11, 0.2)"
+              }}
+            >
+              ★ Golden Ticket
+            </span>
+          )}
           {isLapsing && <span className="badge lapsing">Last</span>}
           
           {isMonthly && sub.signupDate && mode === 'directory' && (() => {
@@ -761,6 +780,84 @@ function App() {
     const emailStr = list.join(", ");
     navigator.clipboard.writeText(emailStr);
     alert(`Copied ${list.length} ${label} emails to clipboard.`);
+  };
+
+  const printGoldenTickets = () => {
+    const lapsing = subscribers.filter(s => isActiveForMonth(s, selectedMonth) && isLapsingThisMonth(s, selectedMonth));
+    const win = window.open("", "_blank");
+    if (!win) return;
+
+    const qrUrl = renewalUrl ? `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(renewalUrl)}` : null;
+
+    win.document.write(`
+      <html>
+        <head>
+          <title>ROTM Golden Tickets - ${fmt(selectedMonth)}</title>
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;700;800&family=DM+Mono&display=swap');
+            body { font-family: 'DM Sans', sans-serif; padding: 20px; color: #000; }
+            .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+            .ticket { 
+              border: 3px solid #000; 
+              padding: 25px; 
+              position: relative; 
+              height: 300px;
+              display: flex;
+              flex-direction: column;
+              justify-content: space-between;
+              background: #fff;
+              page-break-inside: avoid;
+            }
+            .header { font-weight: 800; font-size: 24px; text-transform: uppercase; letter-spacing: 0.1em; border-bottom: 2px solid #000; padding-bottom: 10px; }
+            .sub-header { font-weight: 700; font-size: 16px; margin-top: 15px; }
+            .recipient { font-size: 20px; font-weight: 800; margin-top: 5px; color: #d97706; }
+            .message { font-size: 13px; line-height: 1.4; margin-top: 10px; flex: 1; }
+            .footer { display: flex; align-items: flex-end; justify-content: space-between; margin-top: 10px; }
+            .qr-container { width: 80px; height: 80px; border: 1px solid #eee; padding: 5px; }
+            .qr-container img { width: 100%; height: 100%; }
+            .order-ref { font-family: 'DM Mono', monospace; font-size: 10px; color: #666; }
+            @media print {
+              .no-print { display: none; }
+              body { padding: 0; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="no-print" style="margin-bottom: 20px; padding: 10px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 4px; font-size: 13px; color: #92400e;">
+            <strong>Golden Ticket Generator:</strong> Found ${lapsing.length} subscribers on their last record. 
+            ${!renewalUrl ? "<em>Note: Add a Renewal URL in Settings to include a QR code.</em>" : ""}
+            Press <strong>Cmd+P</strong> to print.
+          </div>
+          
+          <div class="grid">
+            ${lapsing.map(s => `
+              <div class="ticket">
+                <div>
+                  <div class="header">Golden Ticket</div>
+                  <div class="sub-header">THIS IS YOUR LAST RECORD!</div>
+                  <div class="recipient">${s.recipient}</div>
+                  <div class="message">
+                    We've loved having you in the Record of the Month Club. 
+                    Your current subscription ends with this record. 
+                    <strong>Renew now to keep your spot in the club!</strong>
+                  </div>
+                </div>
+                <div class="footer">
+                  <div class="order-ref">Order Ref: #${s.order || 'N/A'}<br>End Month: ${fmt(selectedMonth)}</div>
+                  ${qrUrl ? `
+                    <div style="text-align: center;">
+                      <div class="qr-container"><img src="${qrUrl}" /></div>
+                      <div style="font-size: 8px; font-weight: 700; margin-top: 4px;">SCAN TO RENEW</div>
+                    </div>
+                  ` : ''}
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </body>
+      </html>
+    `);
+    win.document.close();
   };
 
   const printPickupList = () => {
@@ -1140,6 +1237,13 @@ function App() {
                 <div style={{ fontWeight: 800, fontSize: 16 }}>Monthly Action Center</div>
                 <div style={{ fontFamily: "DM Mono,monospace", fontSize: 11, color: "var(--text3)", marginTop: 4 }}>Subscribers needing special attention for {fmt(selectedMonth)}</div>
               </div>
+              <button 
+                onClick={printGoldenTickets}
+                className="submit-btn" 
+                style={{ width: "auto", padding: "8px 16px", fontSize: 11, display: "flex", alignItems: "center", gap: 6, background: "#d97706" }}
+              >
+                <Printer size={14} /> Print Golden Tickets
+              </button>
             </div>
 
             {(() => {
@@ -1638,6 +1742,19 @@ function App() {
                 <div style={{ fontSize: 11, color: "var(--text2)", marginTop: 6, lineHeight: 1.5 }}>
                   <strong>Important:</strong> Enter your BigCommerce store URL. 
                   Order numbers will link to your manager search.
+                </div>
+              </div>
+
+              <div className="form-field">
+                <label className="form-label">ROTM Renewal Product URL</label>
+                <input 
+                  className="form-input" 
+                  placeholder="e.g. https://theendofallmusic.com/products/rotm-renewal" 
+                  value={renewalUrl}
+                  onChange={(e) => setRenewalUrl(e.target.value)}
+                />
+                <div style={{ fontSize: 11, color: "var(--text2)", marginTop: 6, lineHeight: 1.5 }}>
+                  <strong>Golden Ticket:</strong> This URL will be used to generate a QR code on the physical renewal slips.
                 </div>
               </div>
               
