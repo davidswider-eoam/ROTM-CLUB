@@ -801,21 +801,23 @@ function App() {
               border: 3px solid #000; 
               padding: 25px; 
               position: relative; 
-              height: 300px;
+              height: 360px;
               display: flex;
               flex-direction: column;
               justify-content: space-between;
               background: #fff;
               page-break-inside: avoid;
             }
-            .header { font-weight: 800; font-size: 24px; text-transform: uppercase; letter-spacing: 0.1em; border-bottom: 2px solid #000; padding-bottom: 10px; }
-            .sub-header { font-weight: 700; font-size: 16px; margin-top: 15px; }
-            .recipient { font-size: 20px; font-weight: 800; margin-top: 5px; color: #d97706; }
-            .message { font-size: 13px; line-height: 1.4; margin-top: 10px; flex: 1; }
-            .footer { display: flex; align-items: flex-end; justify-content: space-between; margin-top: 10px; }
-            .qr-container { width: 80px; height: 80px; border: 1px solid #eee; padding: 5px; }
+            .header-row { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #000; padding-bottom: 10px; }
+            .header { font-weight: 800; font-size: 22px; text-transform: uppercase; letter-spacing: 0.1em; }
+            .logo { height: 40px; width: auto; }
+            .sub-header { font-weight: 700; font-size: 14px; margin-top: 15px; color: #666; text-transform: uppercase; }
+            .recipient { font-size: 20px; font-weight: 800; margin-top: 5px; color: #000; }
+            .message { font-size: 13px; line-height: 1.5; margin-top: 12px; flex: 1; }
+            .footer { display: flex; align-items: flex-end; justify-content: space-between; margin-top: 15px; border-top: 1px dashed #ccc; padding-top: 10px; }
+            .qr-container { width: 80px; height: 80px; border: 1px solid #eee; padding: 5px; background: #fff; }
             .qr-container img { width: 100%; height: 100%; }
-            .order-ref { font-family: 'DM Mono', monospace; font-size: 10px; color: #666; }
+            .contact-info { font-family: 'DM Mono', monospace; font-size: 10px; color: #444; line-height: 1.4; }
             @media print {
               .no-print { display: none; }
               body { padding: 0; }
@@ -825,7 +827,6 @@ function App() {
         <body>
           <div class="no-print" style="margin-bottom: 20px; padding: 10px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 4px; font-size: 13px; color: #92400e;">
             <strong>Golden Ticket Generator:</strong> Found ${lapsing.length} subscribers on their last record. 
-            ${!renewalUrl ? "<em>Note: Add a Renewal URL in Settings to include a QR code.</em>" : ""}
             Press <strong>Cmd+P</strong> to print.
           </div>
           
@@ -833,17 +834,25 @@ function App() {
             ${lapsing.map(s => `
               <div class="ticket">
                 <div>
-                  <div class="header">Golden Ticket</div>
-                  <div class="sub-header">THIS IS YOUR LAST RECORD!</div>
+                  <div class="header-row">
+                    <div class="header">TIME TO RENEW</div>
+                    <img src="${logo}" class="logo" />
+                  </div>
+                  <div class="sub-header">This is your last record!</div>
                   <div class="recipient">${s.recipient}</div>
                   <div class="message">
-                    We've loved having you in the Record of the Month Club. 
-                    Your current subscription ends with this record. 
-                    <strong>Renew now to keep your spot in the club!</strong>
+                    We hope you've enjoyed the tunes. Don't miss a month and renew now by scanning the QR code or going to <strong>theendofallmusic.com</strong>.
+                    <br><br>
+                    Wanna chat with a real person about your ROTM Club? 
+                    Give us a call: <strong>662-281-1909</strong>. We're no algorithm!
                   </div>
                 </div>
                 <div class="footer">
-                  <div class="order-ref">Order Ref: #${s.order || 'N/A'}<br>End Month: ${fmt(selectedMonth)}</div>
+                  <div class="contact-info">
+                    Order Ref: #${s.order || 'N/A'}<br>
+                    End Month: ${fmt(selectedMonth)}<br>
+                    theendofallmusic.com
+                  </div>
                   ${qrUrl ? `
                     <div style="text-align: center;">
                       <div class="qr-container"><img src="${qrUrl}" /></div>
