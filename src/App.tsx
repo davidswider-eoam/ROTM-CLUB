@@ -819,38 +819,46 @@ function App() {
           <title>ROTM Golden Tickets - ${fmt(selectedMonth)}</title>
           <style>
             @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;700;800&family=DM+Mono&display=swap');
-            body { font-family: 'DM Sans', sans-serif; padding: 20px; color: #000; }
-            .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+            body { font-family: 'DM Sans', sans-serif; padding: 0.25in; color: #000; margin: 0; }
+            .grid { 
+              display: grid; 
+              grid-template-columns: 1fr 1fr; 
+              gap: 15px;
+              width: 100%;
+            }
             .ticket { 
-              border: 3px solid #000; 
-              padding: 25px; 
+              border: 2px solid #000; 
+              padding: 18px; 
               position: relative; 
-              height: 360px;
+              height: 3.2in; /* Roughly 3 rows of these fit on an 11in page */
               display: flex;
               flex-direction: column;
               justify-content: space-between;
               background: #fff;
               page-break-inside: avoid;
+              box-sizing: border-box;
             }
-            .header-row { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #000; padding-bottom: 10px; }
-            .header { font-weight: 800; font-size: 22px; text-transform: uppercase; letter-spacing: 0.1em; }
-            .logo { height: 40px; width: auto; }
-            .sub-header { font-weight: 700; font-size: 14px; margin-top: 15px; color: #666; text-transform: uppercase; }
-            .recipient { font-size: 20px; font-weight: 800; margin-top: 5px; color: #000; }
-            .message { font-size: 13px; line-height: 1.5; margin-top: 12px; flex: 1; }
-            .footer { display: flex; align-items: flex-end; justify-content: space-between; margin-top: 15px; border-top: 1px dashed #ccc; padding-top: 10px; }
-            .qr-container { width: 80px; height: 80px; border: 1px solid #eee; padding: 5px; background: #fff; }
+            .header-row { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #000; padding-bottom: 8px; }
+            .header { font-weight: 800; font-size: 18px; text-transform: uppercase; letter-spacing: 0.05em; }
+            .logo { height: 32px; width: auto; }
+            .sub-header { font-weight: 700; font-size: 12px; margin-top: 12px; color: #666; text-transform: uppercase; }
+            .recipient { font-size: 18px; font-weight: 800; margin-top: 4px; color: #000; }
+            .message { font-size: 11px; line-height: 1.4; margin-top: 8px; flex: 1; }
+            .footer { display: flex; align-items: flex-end; justify-content: space-between; margin-top: 10px; border-top: 1px dashed #ccc; padding-top: 8px; }
+            .qr-container { width: 65px; height: 60px; border: 1px solid #eee; padding: 5px; background: #fff; }
             .qr-container img { width: 100%; height: 100%; }
-            .contact-info { font-family: 'DM Mono', monospace; font-size: 10px; color: #444; line-height: 1.4; }
+            .contact-info { font-family: 'DM Mono', monospace; font-size: 9px; color: #444; line-height: 1.3; }
             @media print {
               .no-print { display: none; }
-              body { padding: 0; }
+              body { padding: 0.25in; }
+              .grid { gap: 10px; }
             }
           </style>
         </head>
         <body>
           <div class="no-print" style="margin-bottom: 20px; padding: 10px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 4px; font-size: 13px; color: #92400e;">
             <strong>Golden Ticket Generator:</strong> Found ${lapsing.length} subscribers on their last record. 
+            This layout is optimized to print <strong>6 per page</strong>.
             Press <strong>Cmd+P</strong> to print.
           </div>
           
@@ -868,7 +876,7 @@ function App() {
                     We hope you've enjoyed the tunes. Don't miss a month and renew now by scanning the QR code or going to <strong>theendofallmusic.com</strong>.
                     <br><br>
                     Wanna chat with a real person about your ROTM Club? 
-                    Give us a call: <strong>662-281-1909</strong>. We're no algorithm!
+                    Give us a call: <strong>662-281-1909</strong>.
                   </div>
                 </div>
                 <div class="footer">
@@ -880,7 +888,7 @@ function App() {
                   ${qrUrl ? `
                     <div style="text-align: center;">
                       <div class="qr-container"><img src="${qrUrl}" /></div>
-                      <div style="font-size: 8px; font-weight: 700; margin-top: 4px;">SCAN TO RENEW</div>
+                      <div style="font-size: 7px; font-weight: 700; margin-top: 2px;">SCAN TO RENEW</div>
                     </div>
                   ` : ''}
                 </div>
