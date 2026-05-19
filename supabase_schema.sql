@@ -48,12 +48,21 @@ create table history (
   created_at timestamptz default now()
 );
 
+-- App Config Table
+create table app_config (
+  key text primary key,
+  value text not null,
+  updated_at timestamptz default now()
+);
+
 -- Enable Row Level Security (RLS)
 alter table subscribers enable row level security;
 alter table catalog enable row level security;
 alter table history enable row level security;
+alter table app_config enable row level security;
 
 -- Create Policies (Only allow authenticated users)
 create policy "Authenticated users can access subscribers" on subscribers for all using (auth.role() = 'authenticated');
 create policy "Authenticated users can access catalog" on catalog for all using (auth.role() = 'authenticated');
 create policy "Authenticated users can access history" on history for all using (auth.role() = 'authenticated');
+create policy "Authenticated users can access app_config" on app_config for all using (auth.role() = 'authenticated');

@@ -73,13 +73,19 @@ function App() {
     return MUSIC_QUOTES[Math.floor(Math.random() * MUSIC_QUOTES.length)];
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem('bcStoreUrl', bcStoreUrl);
-  }, [bcStoreUrl]);
-
-  useEffect(() => {
-    localStorage.setItem('renewalUrl', renewalUrl);
-  }, [renewalUrl]);
+  const saveGlobalSettings = async (bcUrl: string, rUrl: string) => {
+    const { error } = await supabase.from('app_config').upsert([
+      { key: 'bc_store_url', value: bcUrl },
+      { key: 'renewal_url', value: rUrl }
+    ]);
+    
+    if (error) {
+      alert("Error saving global settings: " + error.message);
+    } else {
+      logAction("Updated Settings", "Global application settings were updated.", 'catalog');
+      alert("Settings saved successfully across all devices!");
+    }
+  };
 
   const fetchIncomingOrders = async () => {
     setIsFetchingBC(true);
@@ -213,6 +219,24 @@ function App() {
         staffMember: h.staff_member,
         category: h.category as any
       })));
+    }
+
+    // 4. App Config
+    const { data: configData } = await supabase.from('app_config').select('*');
+    if (configData) {
+      const bcUrl = configData.find(c => c.key === 'bc_store_url')?.value;
+      const rUrl = configData.find(c => c.key === 'renewal_url')?.value;
+      
+      if (bcUrl) setBcStoreUrl(bcUrl);
+      if (rUrl) setRenewalUrl(rUrl);
+      
+      // Migration check: if DB is missing these but local storage has them, save them to DB
+      if (!bcUrl && localStorage.getItem('bcStoreUrl')) {
+        await supabase.from('app_config').upsert({ key: 'bc_store_url', value: localStorage.getItem('bcStoreUrl') || "" });
+      }
+      if (!rUrl && localStorage.getItem('renewalUrl')) {
+        await supabase.from('app_config').upsert({ key: 'renewal_url', value: localStorage.getItem('renewalUrl') || "" });
+      }
     }
 
     setLoading(false);
@@ -1766,6 +1790,14 @@ function App() {
                   <strong>Golden Ticket:</strong> This URL will be used to generate a QR code on the physical renewal slips.
                 </div>
               </div>
+
+              <button 
+                className="submit-btn" 
+                style={{ background: "var(--text3)", width: "auto", padding: "8px 24px", marginBottom: 20 }}
+                onClick={() => saveGlobalSettings(bcStoreUrl, renewalUrl)}
+              >
+                <Save size={14} style={{ marginRight: 8, display: 'inline' }} /> Save Settings Everywhere
+              </button>
               
               <SupabaseMigration />
 
