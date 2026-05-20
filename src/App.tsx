@@ -1182,7 +1182,18 @@ function App() {
                 {toShip.length > 0 && (
                   <>
                     <div className="section-divider">To Ship — {toShip.length}</div>
-                    {toShip.map(s => <SubRow key={s.id} sub={s} mode="shipping" />)}
+                    {(['monthly', '3-month', '6-month', '12-month'] as SubscriptionType[]).map(type => {
+                      const typeList = toShip.filter(s => s.type === type);
+                      if (typeList.length === 0) return null;
+                      return (
+                        <div key={type} style={{ marginTop: 8 }}>
+                          <div style={{ padding: "8px 24px", fontSize: 10, fontWeight: 800, textTransform: 'uppercase', color: 'var(--text3)', background: 'var(--surface2)', borderBottom: '1px solid var(--border)' }}>
+                            {type} — {typeList.length}
+                          </div>
+                          {typeList.map(s => <SubRow key={s.id} sub={s} mode="shipping" />)}
+                        </div>
+                      );
+                    })}
                   </>
                 )}
                 {toPickUp.length > 0 && (
