@@ -146,6 +146,110 @@ serve(async (req) => {
       })
     }
 
+    // 8. ACTION: Fetch Shipping Addresses for Multiple Orders (for Pirate Ship / Batch Fulfillment)
+    if (action === 'fetch_addresses' && Array.isArray(body.orderIds)) {
+      const orderIds: string[] = body.orderIds;
+      const results: Record<string, any> = {};
+
+      await Promise.all(orderIds.map(async (rawId) => {
+        const trimmedId = rawId ? rawId.toString().trim().replace('#', '') : '';
+        if (!trimmedId || trimmedId.toUpperCase() === 'INSTORE') return;
+
+        try {
+          // 1. Try dedicated shipping_addresses endpoint
+          const shipRes = await fetch(`${v2Url}/orders/${trimmedId}/shipping_addresses`, {
+            headers: {
+              'X-Auth-Token': ACCESS_TOKEN,
+              'Accept': 'application/json',
+            }
+          });
+          
+          let addr = null;
+          if (shipRes.ok) {
+            const addrs = await shipRes.json();
+            if (Array.isArray(addrs) && addrs.length > 0 && addrs[0].street_1) {
+              addr = addrs[0];
+            }
+          }
+
+          // 2. Fallback to main order billing_address if shipping address is empty
+          if (!addr) {
+            const orderRes = await fetch(`${v2Url}/orders/${trimmedId}`, {
+              headers: {
+                'X-Auth-Token': ACCESS_TOKEN,
+                'Accept': 'application/json',
+              }
+            });
+            if (orderRes.ok) {
+              const orderData = await orderRes.json();
+              if (orderData.billing_address && orderData.billing_address.street_1) {
+                addr = orderData.billing_address;
+              }
+            }
+          }
+
+          if (addr) {
+            results[rawId] = addr;
+            results[trimmedId] = addr;
+            results[`#${trimmedId}`] = addr;
+          }
+        } catch (e) {
+          console.error(`Error fetching address for order ${trimmedId}:`, e);
+        }
+      }));
+
+      return new Response(JSON.stringify(results), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200
+      });
+    }
+
+    // 9. ACTION: Check fulfillment / shipment status for multiple orders
+    if (action === 'check_orders_fulfillment' && Array.isArray(body.orderIds)) {
+      const orderIds: string[] = body.orderIds;
+      const results: Record<string, { status: string; hasShipment: boolean; tracking?: string; shipments?: any[] }> = {};
+
+      await Promise.all(orderIds.map(async (rawId) => {
+        const trimmedId = rawId ? rawId.toString().trim().replace('#', '') : '';
+        if (!trimmedId || trimmedId.toUpperCase() === 'INSTORE') return;
+
+        try {
+          const orderRes = await fetch(`${v2Url}/orders/${trimmedId}`, {
+            headers: {
+              'X-Auth-Token': ACCESS_TOKEN,
+              'Accept': 'application/json',
+            }
+          });
+          if (orderRes.ok) {
+            const orderData = await orderRes.json();
+            const shipRes = await fetch(`${v2Url}/orders/${trimmedId}/shipments`, {
+              headers: {
+                'X-Auth-Token': ACCESS_TOKEN,
+                'Accept': 'application/json',
+              }
+            });
+            let shipments = [];
+            if (shipRes.ok) {
+              shipments = await shipRes.json();
+            }
+            results[rawId] = {
+              status: orderData.status,
+              hasShipment: Array.isArray(shipments) && shipments.length > 0,
+              tracking: Array.isArray(shipments) && shipments.length > 0 ? shipments[0].tracking_number : undefined,
+              shipments: shipments
+            };
+          }
+        } catch (e) {
+          console.error(`Error checking fulfillment for ${trimmedId}:`, e);
+        }
+      }));
+
+      return new Response(JSON.stringify(results), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200
+      });
+    }
+
     throw new Error(`Invalid action: ${action}`)
 
   } catch (error) {

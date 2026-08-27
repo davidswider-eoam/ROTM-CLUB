@@ -62,3 +62,61 @@ export function getDaysUntilRenewal(signupDateStr?: string): number | null {
   
   return diffDays;
 }
+
+export function addMonthsToYm(ym: string, monthsToAdd: number): string {
+  if (!ym || !ym.includes('-')) return ym;
+  const [yearStr, monthStr] = ym.split('-');
+  const year = parseInt(yearStr, 10);
+  const month = parseInt(monthStr, 10);
+  if (isNaN(year) || isNaN(month)) return ym;
+
+  const totalMonths = (month - 1) + monthsToAdd;
+  const newYear = year + Math.floor(totalMonths / 12);
+  const newMonth = ((totalMonths % 12) + 12) % 12 + 1;
+  return `${newYear}-${newMonth.toString().padStart(2, '0')}`;
+}
+
+export function getNextMonth(currentMonth?: string): string {
+  const base = currentMonth || getCurrentMonth();
+  return addMonthsToYm(base, 1);
+}
+
+export function calculateEndMonth(startMonth: string, type: string): string | null {
+  if (!startMonth || !startMonth.includes('-')) return null;
+  
+  const cleanType = (type || '').toLowerCase().trim();
+  if (cleanType === 'monthly') return null;
+
+  let duration = 0;
+  if (cleanType === '3-month' || cleanType === '3') duration = 3;
+  else if (cleanType === '6-month' || cleanType === '6') duration = 6;
+  else if (cleanType === '12-month' || cleanType === '12' || cleanType === '1-year') duration = 12;
+  else {
+    const match = cleanType.match(/(\d+)/);
+    if (match) {
+      duration = parseInt(match[1], 10);
+    } else {
+      return null;
+    }
+  }
+
+  if (duration <= 0) return null;
+  // A 3-month subscription starting 2026-01 ends in 2026-03 (adds 3 - 1 = 2 months)
+  return addMonthsToYm(startMonth, duration - 1);
+}
+
+export function getMonthOptions(startYearOffset = -1, endYearOffset = 2): { value: string; label: string }[] {
+  const options: { value: string; label: string }[] = [];
+  const currentYear = new Date().getFullYear();
+  
+  for (let year = currentYear + startYearOffset; year <= currentYear + endYearOffset; year++) {
+    for (let month = 1; month <= 12; month++) {
+      const ym = `${year}-${month.toString().padStart(2, '0')}`;
+      const d = new Date(year, month - 1, 1);
+      const label = d.toLocaleString('en-US', { month: 'short', year: 'numeric' });
+      options.push({ value: ym, label: `${label} (${ym})` });
+    }
+  }
+  return options;
+}
+

@@ -21,7 +21,8 @@ import {
   Sparkles,
   Loader2,
   Inbox,
-  AlertTriangle
+  AlertTriangle,
+  RotateCcw
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -29,8 +30,9 @@ import { twMerge } from 'tailwind-merge';
 import './App.css';
 import { MONTHS } from './constants';
 import { MUSIC_QUOTES } from './quotes';
-import type { Subscriber, Catalog, HistoryEntry, SubscriptionType } from './types';
-import { isActiveForMonth, isNewThisMonth, isLapsingThisMonth, statusFor, fmt, getCurrentMonth, getDaysUntilRenewal } from './utils';
+import type { Subscriber, Catalog, HistoryEntry, SubscriptionType, DeliveryMethod } from './types';
+import { isActiveForMonth, isNewThisMonth, isLapsingThisMonth, statusFor, fmt, getCurrentMonth, getDaysUntilRenewal, calculateEndMonth, getNextMonth, getMonthOptions } from './utils';
+import MonthSelector from './MonthSelector';
 import logo from './assets/logo.png';
 import { supabase } from './supabase';
 import SupabaseMigration from './SupabaseMigration';
@@ -42,6 +44,182 @@ function cn(...inputs: ClassValue[]) {
 
 type Tab = 'dashboard' | 'incoming' | 'catalog' | 'contacts' | 'add' | 'history' | 'settings' | 'attention';
 type SubTab = 'all' | 'term' | 'monthly' | 'flagged';
+
+interface EditSubscriberFormProps {
+  sub: Subscriber;
+  onSave: (
+    id: string, 
+    billing: string, 
+    billingEmail: string, 
+    recipient: string, 
+    recipientEmail: string, 
+    order: string, 
+    type: string, 
+    delivery: string, 
+    start: string, 
+    end: string | null, 
+    signupDate: string | null
+  ) => void;
+}
+
+const EditSubscriberForm: React.FC<EditSubscriberFormProps> = ({ sub, onSave }) => {
+  const [billing, setBilling] = useState(sub.billing);
+  const [billingEmail, setBillingEmail] = useState(sub.billingEmail || '');
+  const [recipient, setRecipient] = useState(sub.recipient);
+  const [recipientEmail, setRecipientEmail] = useState(sub.recipientEmail || '');
+  const [order, setOrder] = useState(sub.order);
+  const [type, setType] = useState<SubscriptionType>(sub.type);
+  const [delivery, setDelivery] = useState(sub.delivery);
+  const [signupDate, setSignupDate] = useState(sub.signupDate || '');
+  const [start, setStart] = useState(sub.start);
+  
+  // If sub.end is missing/open on a fixed-term sub, auto-calculate it
+  const initialEnd = sub.end || (sub.type !== 'monthly' ? calculateEndMonth(sub.start, sub.type) : '');
+  const [end, setEnd] = useState<string>(initialEnd || '');
+
+  // Keep in sync if sub changes
+  useEffect(() => {
+    setBilling(sub.billing);
+    setBillingEmail(sub.billingEmail || '');
+    setRecipient(sub.recipient);
+    setRecipientEmail(sub.recipientEmail || '');
+    setOrder(sub.order);
+    setType(sub.type);
+    setDelivery(sub.delivery);
+    setSignupDate(sub.signupDate || '');
+    setStart(sub.start);
+    const calculated = sub.end || (sub.type !== 'monthly' ? calculateEndMonth(sub.start, sub.type) : '');
+    setEnd(calculated || '');
+  }, [sub]);
+
+  const handleTypeChange = (newType: SubscriptionType) => {
+    setType(newType);
+    if (newType === 'monthly') {
+      setEnd('');
+    } else {
+      const calculated = calculateEndMonth(start, newType);
+      if (calculated) setEnd(calculated);
+    }
+  };
+
+  const handleStartChange = (newStart: string) => {
+    setStart(newStart);
+    if (type !== 'monthly') {
+      const calculated = calculateEndMonth(newStart, type);
+      if (calculated) setEnd(calculated);
+    }
+  };
+
+  return (
+    <div className="form-body" style={{ padding: 0 }}>
+      <div className="form-row">
+        <div className="form-field">
+          <label className="form-label">Billing Name</label>
+          <input className="form-input" value={billing} onChange={(e) => setBilling(e.target.value)} />
+        </div>
+        <div className="form-field">
+          <label className="form-label">Billing Email</label>
+          <input className="form-input" value={billingEmail} onChange={(e) => setBillingEmail(e.target.value)} />
+        </div>
+      </div>
+      <div className="form-row">
+        <div className="form-field">
+          <label className="form-label">Recipient Name</label>
+          <input className="form-input" value={recipient} onChange={(e) => setRecipient(e.target.value)} />
+        </div>
+        <div className="form-field">
+          <label className="form-label">Recipient Email</label>
+          <input className="form-input" value={recipientEmail} onChange={(e) => setRecipientEmail(e.target.value)} />
+        </div>
+      </div>
+      <div className="form-row">
+        <div className="form-field">
+          <label className="form-label">Order #</label>
+          <input className="form-input" value={order} onChange={(e) => setOrder(e.target.value)} />
+        </div>
+        <div className="form-field">
+          <label className="form-label">Type</label>
+          <select className="form-select" value={type} onChange={(e) => handleTypeChange(e.target.value as SubscriptionType)}>
+            <option value="3-month">3-month</option>
+            <option value="6-month">6-month</option>
+            <option value="12-month">12-month</option>
+            <option value="monthly">monthly</option>
+          </select>
+        </div>
+      </div>
+      <div className="form-row">
+        <div className="form-field">
+          <label className="form-label">Delivery</label>
+          <select className="form-select" value={delivery} onChange={(e) => setDelivery(e.target.value as any)}>
+            <option value="ship">ship</option>
+            <option value="pickup">pickup</option>
+          </select>
+        </div>
+        <div className="form-field">
+          <label className="form-label">Signup Date</label>
+          <input className="form-input" type="date" value={signupDate} onChange={(e) => setSignupDate(e.target.value)} />
+        </div>
+      </div>
+      <div className="form-row">
+        <div className="form-field">
+          <label className="form-label">Start Month</label>
+          <MonthSelector value={start} onChange={handleStartChange} />
+        </div>
+        <div className="form-field">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <label className="form-label">End Month</label>
+            {type !== 'monthly' && (
+              <span style={{ fontSize: 10, color: 'var(--green)', fontFamily: 'DM Mono,monospace', fontWeight: 600 }}>
+                Auto-calculated
+              </span>
+            )}
+          </div>
+          {type === 'monthly' ? (
+            <div style={{ padding: '8px 12px', background: 'var(--surface2)', border: '1px solid var(--border2)', borderRadius: 6, fontSize: 12, color: 'var(--text3)', fontFamily: 'DM Mono,monospace' }}>
+              Open / Recurring (No end date)
+            </div>
+          ) : (
+            <div>
+              <MonthSelector 
+                value={end} 
+                onChange={(val) => setEnd(val)} 
+                showQuickPills={false} 
+              />
+              {start && end && (
+                <div style={{ fontSize: 11, color: 'var(--text3)', fontFamily: 'DM Mono,monospace', marginTop: 4 }}>
+                  {fmt(start)} → {fmt(end)}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <button 
+        className="ship-btn"
+        style={{ marginTop: 16, background: 'var(--text3)' }}
+        onClick={() => {
+          onSave(
+            sub.id,
+            billing,
+            billingEmail,
+            recipient,
+            recipientEmail,
+            order,
+            type,
+            delivery,
+            start,
+            type === 'monthly' ? null : (end || null),
+            signupDate || null
+          );
+        }}
+      >
+        <Save size={14} style={{ marginRight: 6, display: 'inline' }} />
+        Save Subscriber Changes
+      </button>
+    </div>
+  );
+};
 
 
 function App() {
@@ -68,6 +246,141 @@ function App() {
   const [bcStoreUrl, setBcStoreUrl] = useState(() => localStorage.getItem('bcStoreUrl') || "");
   const [renewalUrl, setRenewalUrl] = useState(() => localStorage.getItem('renewalUrl') || "");
   const searchRef = useRef<HTMLInputElement>(null);
+
+  // Add Subscriber Form state
+  const [newBilling, setNewBilling] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [newOrder, setNewOrder] = useState("");
+  const [newType, setNewType] = useState<SubscriptionType>("6-month");
+  const [newDelivery, setNewDelivery] = useState<DeliveryMethod>("ship");
+  const [newStart, setNewStart] = useState<string>(() => getCurrentMonth());
+  const [newEnd, setNewEnd] = useState<string | null>(() => calculateEndMonth(getCurrentMonth(), "6-month"));
+  const [newRecipient, setNewRecipient] = useState("");
+  const [newRecipientEmail, setNewRecipientEmail] = useState("");
+  const [newNotes, setNewNotes] = useState("");
+  const [newSignupDate, setNewSignupDate] = useState("");
+  const [isAutoFilling, setIsAutoFilling] = useState(false);
+  const [isAddSubmitting, setIsAddSubmitting] = useState(false);
+
+  const handleNewTypeChange = (type: SubscriptionType) => {
+    setNewType(type);
+    if (type === 'monthly') {
+      setNewEnd(null);
+    } else {
+      setNewEnd(calculateEndMonth(newStart, type));
+    }
+  };
+
+  const handleNewStartChange = (startMonth: string) => {
+    setNewStart(startMonth);
+    if (newType !== 'monthly') {
+      setNewEnd(calculateEndMonth(startMonth, newType));
+    }
+  };
+
+  const handleAddSubscriberSubmit = async () => {
+    if (!newBilling.trim()) {
+      alert("Billing Name is required.");
+      return;
+    }
+    if (!newStart) {
+      alert("Start Month is required.");
+      return;
+    }
+
+    setIsAddSubmitting(true);
+    try {
+      const recipientName = isGift ? (newRecipient.trim() || newBilling) : newBilling;
+      const recipientEmail = isGift ? (newRecipientEmail.trim() || newEmail) : newEmail;
+      const finalEnd = newType === 'monthly' ? null : (newEnd || calculateEndMonth(newStart, newType));
+
+      const { error } = await supabase.from('subscribers').insert({
+        billing_name: newBilling,
+        billing_email: newEmail,
+        order_id: newOrder,
+        recipient_name: recipientName,
+        recipient_email: recipientEmail,
+        subscription_type: newType,
+        delivery_method: newDelivery,
+        start_month: newStart,
+        end_month: finalEnd,
+        notes: newNotes,
+        signup_date: newSignupDate || null
+      });
+
+      if (error) {
+        alert('Error adding subscriber: ' + error.message);
+      } else {
+        logAction("Added Subscriber", `New subscriber ${newBilling} added (Order #${newOrder})`, 'subscriber');
+        alert("Subscriber added successfully!");
+        
+        // Reset form
+        setNewBilling("");
+        setNewEmail("");
+        setNewOrder("");
+        setNewRecipient("");
+        setNewRecipientEmail("");
+        setNewNotes("");
+        setNewSignupDate("");
+        setIsGift(false);
+        const cur = getCurrentMonth();
+        setNewStart(cur);
+        setNewEnd(calculateEndMonth(cur, newType));
+
+        fetchData();
+        setActiveTab("dashboard");
+        setViewMode("directory");
+      }
+    } catch (e: any) {
+      console.error(e);
+      alert("Unexpected error: " + e.message);
+    } finally {
+      setIsAddSubmitting(false);
+    }
+  };
+
+  const autoFillMissingEndDates = async () => {
+    const toFix = subscribers.filter(s => s.type !== 'monthly' && (!s.end || s.end === 'null' || s.end.trim() === ''));
+    if (toFix.length === 0) {
+      alert("All fixed-term subscribers already have end dates populated!");
+      return;
+    }
+    
+    if (!confirm(`Found ${toFix.length} fixed-term subscribers with missing end dates (displaying as "Open").\n\nWould you like to automatically calculate and save their end dates based on duration?`)) {
+      return;
+    }
+
+    setIsAutoFilling(true);
+    try {
+      const updates = toFix.map(s => {
+        const calculated = calculateEndMonth(s.start, s.type);
+        return {
+          id: s.id,
+          end: calculated
+        };
+      }).filter(u => u.end !== null);
+
+      // Optimistic update
+      setSubscribers(prev => prev.map(s => {
+        const found = updates.find(u => u.id === s.id);
+        return found ? { ...s, end: found.end } : s;
+      }));
+
+      // Update in Supabase
+      await Promise.all(updates.map(u => 
+        supabase.from('subscribers').update({ end_month: u.end }).eq('id', u.id)
+      ));
+
+      logAction("Auto-Filled End Dates", `Calculated and saved end dates for ${updates.length} fixed-term subscribers`, 'subscriber');
+      alert(`Successfully updated ${updates.length} subscribers with calculated end dates!`);
+    } catch (e: any) {
+      console.error("Error auto-filling end dates:", e);
+      alert("Error updating end dates: " + e.message);
+      fetchData();
+    } finally {
+      setIsAutoFilling(false);
+    }
+  };
 
   const zenQuote = useMemo(() => {
     return MUSIC_QUOTES[Math.floor(Math.random() * MUSIC_QUOTES.length)];
@@ -579,6 +892,307 @@ function App() {
     await supabase.from('catalog').update({ workflow: updated }).eq('month', month);
     logAction("Workflow Update", `${item} toggled for ${fmt(month)}`, 'catalog');
   }
+
+  const [isUndoing72, setIsUndoing72] = useState(false);
+
+  const undoPirateShip72Batch = async () => {
+    const BATCH_72_ORDERS = new Set([
+      "16131", "16089", "16028", "16016", "15749", "15905", "15870", "15869", "15867",
+      "15864", "15860", "15834", "15841", "15685", "15427", "15242", "15346", "15373",
+      "13031", "15298", "15235", "15354", "15356", "15388", "15292", "15417", "15238",
+      "15252", "15323", "15187", "15421", "15080", "15572", "15079", "15428", "15457",
+      "15447", "15507", "15573", "15723", "15169", "15413", "15403", "15638", "15461",
+      "15505", "15463", "15335", "15366", "15231", "15223", "15300", "15375", "15368",
+      "15419", "15390", "15078", "15462", "15275", "15342", "15345", "15383", "16053",
+      "15541", "15256", "16092", "15832", "16079", "15988", "16394"
+    ]);
+
+    const BATCH_72_NAMES = new Set([
+      "sem ortiz", "s. segat", "maggie casey", "karen lentz", "yasemin goksenin",
+      "matthew hellman", "bronwen haskel", "liv cohen", "hannah claytor", "randy cox",
+      "david gibson", "bradley hiatt", "matthew mcmullen", "jacob hart", "ben yarbrough",
+      "scott riback", "rick noble", "joshua anderson", "michael \"funki child\" tuckman",
+      "stephanie stattel", "william gillespie", "matt ward", "michael broek", "michael campola",
+      "john grimes", "brooke ashleigh", "amanda mitchell", "zoe nillstein", "colin rinaker",
+      "john buckholz", "robert gregory", "kristin spanos", "alex vinson", "ty barkley",
+      "jason fine", "ryan bruce", "karen obyrne", "joel rivlin", "matthew robbins",
+      "michele gutierrez", "tim krone", "david summers", "blake tartt", "max lescohier",
+      "jim barnett", "scott whatley", "steven hild", "paul masquelier", "andrew marion",
+      "maddie schwartz", "josh beckman", "alan owens", "tom smith", "bonnie brock",
+      "neil sekhri", "peter smith", "jonathan tien", "wes mckeithen", "david leflar",
+      "jennie goloboy", "alison stroup", "leever and steven karkanen", "ben campbell",
+      "david norman iii", "richard meagher", "andrew olinger", "phil adams", "stuart mccluer",
+      "rebecca frankum", "justin carter", "angela brown", "bruce swain"
+    ]);
+
+    setIsUndoing72(true);
+    try {
+      const monthToUncheck = "2026-08";
+
+      // Find subscribers matching the 72 batch by order ID or name
+      const targets = subscribers.filter(s => {
+        const orderClean = (s.order || "").replace("#", "").trim();
+        const nameClean = (s.recipient || s.billing || "").toLowerCase().trim();
+        const matchesOrder = orderClean && BATCH_72_ORDERS.has(orderClean);
+        const matchesName = BATCH_72_NAMES.has(nameClean);
+        return matchesOrder || matchesName;
+      });
+
+      if (targets.length === 0) {
+        alert("No subscribers found matching the 72 batch.");
+        return;
+      }
+
+      // Filter only those that currently have 2026-08 marked as shipped
+      const toUpdate = targets.filter(s => (s.shipped_months || []).includes(monthToUncheck));
+
+      const updatedSubscribers = subscribers.map(s => {
+        const isTarget = toUpdate.some(t => t.id === s.id);
+        if (!isTarget) return s;
+        return {
+          ...s,
+          shipped_months: (s.shipped_months || []).filter(m => m !== monthToUncheck)
+        };
+      });
+
+      // Optimistic update
+      setSubscribers(updatedSubscribers);
+
+      // Save to Supabase
+      await Promise.all(toUpdate.map(sub => {
+        const newShipped = (sub.shipped_months || []).filter(m => m !== monthToUncheck);
+        return supabase.from('subscribers').update({ shipped_months: newShipped }).eq('id', sub.id);
+      }));
+
+      logAction(
+        "Undid Batch Ship",
+        `Unchecked the 72 batch subscribers for Aug 2026. Preserved prior shipped packages.`,
+        'shipping'
+      );
+
+      alert(`✅ Done! Successfully unchecked all ${toUpdate.length} subscribers from the 09:11 AM batch.\n\nYour other ~50 previously shipped packages remain checked as SHIPPED!`);
+    } catch (e: any) {
+      console.error("Undo error:", e);
+      alert("Error undoing batch: " + e.message);
+    } finally {
+      setIsUndoing72(false);
+    }
+  };
+
+  const [isSyncingBC, setIsSyncingBC] = useState(false);
+
+  const syncShippedWithBigCommerce = async () => {
+    const activeForMonth = subscribers.filter(s => isActiveForMonth(s, selectedMonth));
+    const orderIds = activeForMonth.map(s => s.order).filter(Boolean);
+
+    if (orderIds.length === 0) {
+      alert("No subscribers found with BigCommerce orders for this month.");
+      return;
+    }
+
+    if (!confirm(`This will check BigCommerce for all ${activeForMonth.length} active subscribers for ${fmt(selectedMonth)} and restore their exact shipping status based on whether shipments exist in BigCommerce.\n\nContinue?`)) {
+      return;
+    }
+
+    setIsSyncingBC(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('bigcommerce-bridge', {
+        body: { action: 'check_orders_fulfillment', orderIds }
+      });
+
+      if (error || !data || data.error) {
+        throw new Error(error?.message || data?.error || "Failed to communicate with BigCommerce");
+      }
+
+      let restoredShippedCount = 0;
+      let restoredUnshippedCount = 0;
+
+      // Update subscriber shipped_months based on BigCommerce fulfillment state
+      const updatedSubscribers = subscribers.map(s => {
+        if (!isActiveForMonth(s, selectedMonth)) return s;
+
+        const rawOrder = s.order || "";
+        const bcInfo = data[rawOrder] || data[rawOrder.replace("#", "")];
+
+        if (!bcInfo) return s;
+
+        const isActuallyShippedInBC = bcInfo.hasShipment || bcInfo.status === 'Shipped' || bcInfo.status === 'Completed';
+        const currentShipped = s.shipped_months || [];
+        const hasMonth = currentShipped.includes(selectedMonth);
+
+        let newShippedMonths = [...currentShipped];
+
+        if (isActuallyShippedInBC) {
+          restoredShippedCount++;
+          if (!hasMonth) newShippedMonths.push(selectedMonth);
+        } else {
+          restoredUnshippedCount++;
+          newShippedMonths = newShippedMonths.filter(m => m !== selectedMonth);
+        }
+
+        return {
+          ...s,
+          shipped_months: newShippedMonths
+        };
+      });
+
+      // Optimistic update
+      setSubscribers(updatedSubscribers);
+
+      // Save to Supabase
+      await Promise.all(updatedSubscribers.map(sub => {
+        return supabase.from('subscribers').update({ shipped_months: sub.shipped_months }).eq('id', sub.id);
+      }));
+
+      logAction(
+        "Restored from BigCommerce",
+        `Synced shipping status for ${fmt(selectedMonth)}: ${restoredShippedCount} shipped, ${restoredUnshippedCount} unshipped`,
+        'shipping'
+      );
+
+      alert(`✅ Restored from BigCommerce!\n\n• ${restoredShippedCount} subscribers verified as SHIPPED.\n• ${restoredUnshippedCount} subscribers set to UNSHIPPED (To Ship).`);
+    } catch (e: any) {
+      console.error("Sync error:", e);
+      alert("Error syncing with BigCommerce: " + e.message);
+    } finally {
+      setIsSyncingBC(false);
+    }
+  };
+
+  const [isExportingPirateShip, setIsExportingPirateShip] = useState(false);
+
+  const exportPirateShipBatch = async () => {
+    // Only export multi-month subscriptions (3-month, 6-month, 12-month)
+    const toExport = activeSubs.filter(s => 
+      s.delivery === 'ship' && 
+      !shipped.has(s.id) && 
+      s.type !== 'monthly'
+    );
+    
+    if (toExport.length === 0) {
+      alert(`No pending 3-month, 6-month, or 12-month 'Ship' subscribers found for ${fmt(selectedMonth)}.`);
+      return;
+    }
+
+    setIsExportingPirateShip(true);
+
+    try {
+      // 1. Gather all order IDs
+      const orderIds = toExport.map(s => s.order).filter(Boolean);
+
+      // 2. Fetch live shipping addresses from BigCommerce
+      let bcAddresses: Record<string, any> = {};
+      try {
+        const { data, error } = await supabase.functions.invoke('bigcommerce-bridge', {
+          body: { action: 'fetch_addresses', orderIds }
+        });
+        if (!error && data && !data.error) {
+          bcAddresses = data;
+        } else if (error) {
+          console.warn("BigCommerce address fetch error:", error);
+        }
+      } catch (e) {
+        console.warn("Could not fetch BC addresses directly:", e);
+      }
+
+      // 3. Current Month record info for packing notes
+      const rec = catalogData[selectedMonth];
+      const recordNote = rec && rec.album && rec.album !== "TBD" 
+        ? `${rec.artist} - ${rec.album}` 
+        : `ROTM ${fmt(selectedMonth)}`;
+
+      // 4. Pirate Ship standard CSV headers
+      const headers = [
+        "Order Number",
+        "Recipient",
+        "Company",
+        "Address Line 1",
+        "Address Line 2",
+        "City",
+        "State",
+        "Zipcode",
+        "Country",
+        "Email",
+        "Phone",
+        "Package Type",
+        "Weight (lbs)",
+        "Weight (oz)",
+        "Service",
+        "Notes"
+      ];
+
+      // 5. Generate rows
+      const rows = toExport.map(s => {
+        const rawOrder = s.order || "";
+        const addr = bcAddresses[rawOrder] || bcAddresses[rawOrder.replace("#", "")] || {};
+        
+        const fullName = addr.first_name 
+          ? `${addr.first_name} ${addr.last_name || ''}`.trim() 
+          : (s.recipient || s.billing);
+          
+        const street1 = addr.street_1 || "";
+        const street2 = addr.street_2 || "";
+        const city = addr.city || "";
+        const state = addr.state || "";
+        const zip = addr.zip || "";
+        const country = addr.country || addr.country_iso2 || "US";
+        const email = addr.email || s.recipientEmail || s.billingEmail || "";
+        const phone = addr.phone || "";
+        const company = addr.company || "";
+        const monthlyNote = s.monthly_notes?.[selectedMonth] ? ` [Note: ${s.monthly_notes[selectedMonth]}]` : "";
+        const notes = `${recordNote}${monthlyNote}`;
+
+        return [
+          `"${rawOrder}"`,
+          `"${fullName.replace(/"/g, '""')}"`,
+          `"${company.replace(/"/g, '""')}"`,
+          `"${street1.replace(/"/g, '""')}"`,
+          `"${street2.replace(/"/g, '""')}"`,
+          `"${city.replace(/"/g, '""')}"`,
+          `"${state.replace(/"/g, '""')}"`,
+          `"${zip.replace(/"/g, '""')}"`,
+          `"${country.replace(/"/g, '""')}"`,
+          `"${email.replace(/"/g, '""')}"`,
+          `"${phone.replace(/"/g, '""')}"`,
+          `"Box"`,
+          `"1"`,
+          `"4"`,
+          `"Media Mail"`,
+          `"${notes.replace(/"/g, '""')}"`
+        ];
+      });
+
+      const csvContent = [
+        headers.join(","),
+        ...rows.map(r => r.join(","))
+      ].join("\n");
+
+      // 6. Download file
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `PirateShip-ROTM-${selectedMonth}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      logAction(
+        "Exported Pirate Ship Batch",
+        `Exported ${toExport.length} shipping labels for ${fmt(selectedMonth)} (USPS Media Mail)`,
+        'shipping'
+      );
+
+      // Do NOT auto-change shipping status
+      alert(`✅ Pirate Ship batch CSV downloaded with ${toExport.length} shipments!\n\nAll subscriber shipping statuses have been left unchanged.`);
+    } catch (e: any) {
+      console.error("Export error:", e);
+      alert("Error generating shipping batch: " + e.message);
+    } finally {
+      setIsExportingPirateShip(false);
+    }
+  };
 
   const downloadShippingCSV = () => {
     // 1. Filter for "Ship" subscribers who haven't shipped yet
@@ -1137,6 +1751,50 @@ function App() {
 
             {viewMode === 'shipping' ? (
               <>
+                <div style={{
+                  background: "#fffbeb",
+                  border: "1px solid #fde68a",
+                  borderRadius: 8,
+                  padding: "12px 18px",
+                  margin: "16px 24px 0",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <RotateCcw size={18} style={{ color: "#d97706", flexShrink: 0 }} />
+                    <div>
+                      <div style={{ color: "#92400e", fontSize: 12, fontWeight: 700 }}>
+                        Undo the 72-Subscriber Batch from 09:11 AM?
+                      </div>
+                      <div style={{ color: "#b45309", fontSize: 11, marginTop: 2 }}>
+                        This will uncheck ONLY those 72 subscribers and keep your ~50 previously shipped packages checked!
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={undoPirateShip72Batch}
+                    disabled={isUndoing72}
+                    style={{
+                      background: "#d97706",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 6,
+                      padding: "8px 16px",
+                      fontSize: 11,
+                      fontWeight: 700,
+                      cursor: isUndoing72 ? "wait" : "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      whiteSpace: "nowrap"
+                    }}
+                  >
+                    <RotateCcw size={12} /> {isUndoing72 ? "Unchecking..." : "↺ Uncheck Those 72 People"}
+                  </button>
+                </div>
+
                 <div className="checklist-header" style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <div 
@@ -1160,12 +1818,107 @@ function App() {
                   </div>
                   <div className="progress-label">{shippedCount} of {totalToShip} shipped</div>
                   
-                  <button 
-                    onClick={downloadShippingCSV}
-                    style={{ background: "var(--surface2)", border: "1px solid var(--border2)", borderRadius: 6, padding: "6px 12px", fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontFamily: "var(--font-mono)", color: "var(--text3)" }}
-                  >
-                    <Package size={12} /> Export CSV
-                  </button>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <button 
+                      onClick={exportPirateShipBatch}
+                      disabled={isExportingPirateShip}
+                      style={{ 
+                        background: "#0284c7", 
+                        color: "#ffffff", 
+                        border: "1px solid #0369a1", 
+                        borderRadius: 6, 
+                        padding: "6px 14px", 
+                        fontSize: 11, 
+                        cursor: isExportingPirateShip ? "wait" : "pointer", 
+                        display: "flex", 
+                        alignItems: "center", 
+                        gap: 6, 
+                        fontFamily: "var(--font-mono)",
+                        fontWeight: 700,
+                        boxShadow: "0 2px 4px rgba(2, 132, 199, 0.2)"
+                      }}
+                      title="Fetch live addresses from BigCommerce and export a ready-to-print Pirate Ship Media Mail CSV"
+                    >
+                      {isExportingPirateShip ? (
+                        <>
+                          <Loader2 size={12} className="animate-spin" />
+                          Fetching BC Addresses...
+                        </>
+                      ) : (
+                        <>
+                          <Package size={12} />
+                          📦 Export Pirate Ship Batch
+                        </>
+                      )}
+                    </button>
+
+                    <button 
+                      onClick={downloadShippingCSV}
+                      style={{ background: "var(--surface2)", border: "1px solid var(--border2)", borderRadius: 6, padding: "6px 12px", fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontFamily: "var(--font-mono)", color: "var(--text3)" }}
+                      title="Standard subscriber list CSV"
+                    >
+                      <Package size={12} /> Basic CSV
+                    </button>
+
+                    <button 
+                      onClick={syncShippedWithBigCommerce}
+                      disabled={isSyncingBC}
+                      style={{ 
+                        background: "var(--surface2)", 
+                        color: "var(--text)", 
+                        border: "1px solid var(--border2)", 
+                        borderRadius: 6, 
+                        padding: "6px 12px", 
+                        fontSize: 11, 
+                        cursor: isSyncingBC ? "wait" : "pointer", 
+                        display: "flex", 
+                        alignItems: "center", 
+                        gap: 6, 
+                        fontFamily: "var(--font-mono)",
+                        fontWeight: 600 
+                      }}
+                      title="Query BigCommerce to restore exact shipped vs. unshipped status based on actual shipments"
+                    >
+                      {isSyncingBC ? (
+                        <>
+                          <Loader2 size={12} className="animate-spin" />
+                          Restoring from BC...
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw size={12} />
+                          🔄 Restore from BigCommerce
+                        </>
+                      )}
+                    </button>
+
+                    {shippedCount > 0 && (
+                      <button 
+                        onClick={() => {
+                          if (confirm(`Reset all ${shippedCount} subscribers back to UNSHIPPED for ${fmt(selectedMonth)}?`)) {
+                            bulkToggleShip(activeSubs.map(s => s.id), false);
+                          }
+                        }}
+                        style={{ 
+                          background: "#fee2e2", 
+                          color: "var(--red)", 
+                          border: "1px solid #fecaca", 
+                          borderRadius: 6, 
+                          padding: "6px 12px", 
+                          fontSize: 11, 
+                          cursor: "pointer", 
+                          display: "flex", 
+                          alignItems: "center", 
+                          gap: 6, 
+                          fontFamily: "var(--font-mono)",
+                          fontWeight: 600 
+                        }}
+                        title="Uncheck all subscribers for this month"
+                      >
+                        <RefreshCw size={12} /> Unship All ({shippedCount})
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="filter-bar">
                   {[["all", "All"], ["unshipped", "Unshipped"], ["pickup", "Pickup"], ["flagged", "Flagged"]].map(([k, l]) => (
@@ -1266,6 +2019,57 @@ function App() {
                     </div>
                   ))}
                 </div>
+
+                {(() => {
+                  const missingEndCount = subscribers.filter(s => s.type !== 'monthly' && (!s.end || s.end === 'null' || s.end.trim() === '')).length;
+                  if (missingEndCount === 0) return null;
+
+                  return (
+                    <div style={{ 
+                      margin: "16px 24px", 
+                      padding: "14px 18px", 
+                      background: "#fffbeb", 
+                      border: "1px solid #fde68a", 
+                      borderRadius: 8, 
+                      display: "flex", 
+                      alignItems: "center", 
+                      justifyContent: "space-between", 
+                      gap: 16,
+                      boxShadow: "0 2px 8px rgba(245, 158, 11, 0.08)"
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <AlertTriangle size={20} style={{ color: "#d97706", flexShrink: 0 }} />
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: "#92400e" }}>
+                            {missingEndCount} Fixed-Term {missingEndCount === 1 ? 'Subscription Has' : 'Subscriptions Have'} Missing End Dates
+                          </div>
+                          <div style={{ fontSize: 11, color: "#b45309", fontFamily: "DM Mono,monospace", marginTop: 2 }}>
+                            These currently display as "Open". Click to auto-calculate and save their end dates.
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="submit-btn"
+                        style={{ 
+                          width: "auto", 
+                          padding: "8px 16px", 
+                          fontSize: 11, 
+                          background: "#d97706", 
+                          display: "flex", 
+                          alignItems: "center", 
+                          gap: 6,
+                          whiteSpace: "nowrap",
+                          fontWeight: 700
+                        }}
+                        onClick={autoFillMissingEndDates}
+                        disabled={isAutoFilling}
+                      >
+                        <Sparkles size={13} /> {isAutoFilling ? 'Updating End Dates...' : '⚡ Auto-fill Missing End Dates'}
+                      </button>
+                    </div>
+                  );
+                })()}
 
                 {displaySubscribers.map((s) => (
                   <SubRow key={s.id} sub={s} mode="directory" />
@@ -1389,22 +2193,17 @@ function App() {
                         className="submit-btn" 
                         style={{ padding: "8px 16px", fontSize: 11 }}
                         onClick={() => {
+                          setNewBilling(billing);
+                          setNewEmail(order.billing_address?.email || '');
+                          setNewRecipient(shipping);
+                          setNewRecipientEmail(order.billing_address?.email || '');
+                          setNewOrder(order.id.toString());
+                          setNewType(detectedType);
+                          setIsGift(isGift);
+                          const curMo = getCurrentMonth();
+                          setNewStart(curMo);
+                          setNewEnd(detectedType === 'monthly' ? null : calculateEndMonth(curMo, detectedType));
                           setActiveTab("add");
-                          setTimeout(() => {
-                            const bName = document.getElementById('new-billing') as HTMLInputElement;
-                            const bEmail = document.getElementById('new-email') as HTMLInputElement;
-                            const rName = document.getElementById('new-recipient') as HTMLInputElement;
-                            const rEmail = document.getElementById('new-recipient-email') as HTMLInputElement;
-                            const orderNum = document.getElementById('new-order') as HTMLInputElement;
-                            const typeSel = document.getElementById('new-type') as HTMLSelectElement;
-                            
-                            if (bName) bName.value = billing;
-                            if (bEmail) bEmail.value = order.billing_address.email;
-                            if (rName) rName.value = shipping;
-                            if (rEmail) rEmail.value = order.billing_address.email;
-                            if (orderNum) orderNum.value = order.id.toString();
-                            if (typeSel) typeSel.value = detectedType;
-                          }, 100);
                         }}
                       >
                         Accept & Review
@@ -1659,39 +2458,116 @@ function App() {
               <div className="form-row">
                 <div className="form-field">
                   <label className="form-label">Billing Name *</label>
-                  <input className="form-input" id="new-billing" placeholder="e.g. Jennifer Davis" />
+                  <input 
+                    className="form-input" 
+                    id="new-billing" 
+                    placeholder="e.g. Jennifer Davis" 
+                    value={newBilling}
+                    onChange={(e) => setNewBilling(e.target.value)}
+                  />
                 </div>
                 <div className="form-field">
                   <label className="form-label">Billing Email</label>
-                  <input className="form-input" id="new-email" placeholder="email@example.com" />
+                  <input 
+                    className="form-input" 
+                    id="new-email" 
+                    placeholder="email@example.com" 
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                  />
                 </div>
               </div>
+
               <div className="form-row">
                 <div className="form-field">
                   <label className="form-label">Order # (BigCommerce)</label>
-                  <input className="form-input" id="new-order" placeholder="e.g. 15406" />
+                  <input 
+                    className="form-input" 
+                    id="new-order" 
+                    placeholder="e.g. 15406" 
+                    value={newOrder}
+                    onChange={(e) => setNewOrder(e.target.value)}
+                  />
                 </div>
                 <div className="form-field">
                   <label className="form-label">Subscription Type *</label>
-                  <select className="form-select" id="new-type">
-                    <option>3-month</option>
-                    <option>6-month</option>
-                    <option>12-month</option>
-                    <option>monthly</option>
+                  <select 
+                    className="form-select" 
+                    id="new-type"
+                    value={newType}
+                    onChange={(e) => handleNewTypeChange(e.target.value as SubscriptionType)}
+                  >
+                    <option value="3-month">3-month</option>
+                    <option value="6-month">6-month</option>
+                    <option value="12-month">12-month</option>
+                    <option value="monthly">monthly</option>
                   </select>
                 </div>
               </div>
+
               <div className="form-row">
                 <div className="form-field">
                   <label className="form-label">Start Month *</label>
-                  <input className="form-input" id="new-start" placeholder="YYYY-MM e.g. 2026-03" />
+                  <MonthSelector 
+                    id="new-start"
+                    value={newStart} 
+                    onChange={handleNewStartChange} 
+                  />
                 </div>
                 <div className="form-field">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <label className="form-label">Subscription End Date</label>
+                    {newType !== 'monthly' && newEnd && (
+                      <span style={{ fontSize: 10, color: 'var(--green)', fontFamily: 'DM Mono,monospace', fontWeight: 600 }}>
+                        ✓ Auto-calculated
+                      </span>
+                    )}
+                  </div>
+
+                  {newType === 'monthly' ? (
+                    <div style={{ padding: '8px 12px', background: 'var(--surface2)', border: '1px solid var(--border2)', borderRadius: 6, fontSize: 12, color: 'var(--text3)', fontFamily: 'DM Mono,monospace' }}>
+                      Open / Recurring (No fixed end date)
+                    </div>
+                  ) : (
+                    <div>
+                      <MonthSelector 
+                        id="new-end"
+                        value={newEnd || ''} 
+                        onChange={(val) => setNewEnd(val)} 
+                        showQuickPills={false}
+                      />
+                      {newStart && newEnd && (
+                        <div style={{ fontSize: 11, color: 'var(--text3)', fontFamily: 'DM Mono,monospace', marginTop: 4 }}>
+                          Includes {newType}: <strong>{fmt(newStart)}</strong> → <strong>{fmt(newEnd)}</strong>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-field">
                   <label className="form-label">Delivery Method *</label>
-                  <select className="form-select" id="new-delivery">
-                    <option>ship</option>
-                    <option>pickup</option>
+                  <select 
+                    className="form-select" 
+                    id="new-delivery"
+                    value={newDelivery}
+                    onChange={(e) => setNewDelivery(e.target.value as DeliveryMethod)}
+                  >
+                    <option value="ship">ship</option>
+                    <option value="pickup">pickup</option>
                   </select>
+                </div>
+                <div className="form-field">
+                  <label className="form-label">Signup/Charge Date (Especially for Monthly)</label>
+                  <input 
+                    className="form-input" 
+                    type="date" 
+                    id="new-signup-date" 
+                    value={newSignupDate}
+                    onChange={(e) => setNewSignupDate(e.target.value)}
+                  />
                 </div>
               </div>
 
@@ -1706,11 +2582,23 @@ function App() {
                   <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                     <div className="form-field">
                       <label className="form-label">Recipient Name</label>
-                      <input className="form-input" id="new-recipient" placeholder="Who's receiving the records?" />
+                      <input 
+                        className="form-input" 
+                        id="new-recipient" 
+                        placeholder="Who's receiving the records?" 
+                        value={newRecipient}
+                        onChange={(e) => setNewRecipient(e.target.value)}
+                      />
                     </div>
                     <div className="form-field">
                       <label className="form-label">Recipient Email</label>
-                      <input className="form-input" id="new-recipient-email" placeholder="recipient@example.com" />
+                      <input 
+                        className="form-input" 
+                        id="new-recipient-email" 
+                        placeholder="recipient@example.com" 
+                        value={newRecipientEmail}
+                        onChange={(e) => setNewRecipientEmail(e.target.value)}
+                      />
                     </div>
                   </div>
                 )}
@@ -1718,58 +2606,21 @@ function App() {
 
               <div className="form-field">
                 <label className="form-label">Notes</label>
-                <input className="form-input" id="new-notes" placeholder="Any special instructions…" />
-              </div>
-
-              <div className="form-field">
-                <label className="form-label">Signup/Charge Date (Especially for Monthly)</label>
-                <input className="form-input" type="date" id="new-signup-date" />
+                <input 
+                  className="form-input" 
+                  id="new-notes" 
+                  placeholder="Any special instructions…" 
+                  value={newNotes}
+                  onChange={(e) => setNewNotes(e.target.value)}
+                />
               </div>
 
               <button 
                 className="submit-btn"
-                onClick={async () => {
-                  const billing = (document.getElementById('new-billing') as HTMLInputElement).value;
-                  const order = (document.getElementById('new-order') as HTMLInputElement).value;
-                  const email = (document.getElementById('new-email') as HTMLInputElement).value;
-                  const type = (document.getElementById('new-type') as HTMLInputElement).value;
-                  const delivery = (document.getElementById('new-delivery') as HTMLInputElement).value;
-                  const start = (document.getElementById('new-start') as HTMLInputElement).value;
-                  const notes = (document.getElementById('new-notes') as HTMLInputElement).value;
-                  const signupDate = (document.getElementById('new-signup-date') as HTMLInputElement).value;
-                  
-                  // Calculate End (simple approximation)
-                  // In a real app we'd use date-fns to add months
-                  // For now, let's leave end null or ask user? 
-                  // Let's just assume we need logic.
-                  // Or let the user input end date if needed.
-                  // For now, let's just insert what we have.
-
-                  const { error } = await supabase.from('subscribers').insert({
-                    billing_name: billing,
-                    billing_email: email,
-                    order_id: order,
-                    recipient_name: isGift ? (document.getElementById('new-recipient') as HTMLInputElement).value : billing,
-                    recipient_email: isGift ? (document.getElementById('new-recipient-email') as HTMLInputElement).value : email,
-                    subscription_type: type,
-                    delivery_method: delivery,
-                    start_month: start,
-                    notes: notes,
-                    signup_date: signupDate || null
-                  });
-
-                  if (error) {
-                    alert('Error: ' + error.message);
-                  } else {
-                    logAction("Added Subscriber", `New subscriber ${billing} added (Order #${order})`, 'subscriber');
-                    alert("Subscriber added successfully!");
-                    fetchData();
-                    setActiveTab("dashboard");
-                    setViewMode("directory");
-                  }
-                }}
+                disabled={isAddSubmitting}
+                onClick={handleAddSubscriberSubmit}
               >
-                Add Subscriber + Notify Staff
+                {isAddSubmitting ? "Adding..." : "Add Subscriber + Notify Staff"}
               </button>
             </div>
           </div>
@@ -1817,6 +2668,25 @@ function App() {
               >
                 <Save size={14} style={{ marginRight: 8, display: 'inline' }} /> Save Settings Everywhere
               </button>
+              
+              <div style={{ marginTop: 16, marginBottom: 20, padding: 16, background: "var(--surface2)", borderRadius: 8, border: "1px solid var(--border2)" }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <Sparkles size={16} style={{ color: "#d97706" }} />
+                  <strong style={{ fontSize: 13 }}>Subscription End Dates Utility</strong>
+                </div>
+                <p style={{ fontSize: 12, color: "var(--text2)", marginBottom: 12 }}>
+                  Automatically calculate and update end dates for any 3-month, 6-month, or 12-month subscribers whose end dates are currently missing or open.
+                </p>
+                <button
+                  type="button"
+                  className="submit-btn"
+                  style={{ width: "auto", padding: "8px 16px", fontSize: 11, background: "#d97706", display: "flex", alignItems: "center", gap: 6 }}
+                  onClick={autoFillMissingEndDates}
+                  disabled={isAutoFilling}
+                >
+                  <Sparkles size={14} /> {isAutoFilling ? 'Updating...' : '⚡ Auto-fill All Missing End Dates'}
+                </button>
+              </div>
               
               <SupabaseMigration />
 
@@ -1945,88 +2815,7 @@ function App() {
 
             <div className="detail-section">
               <div className="detail-section-label">Subscription Details</div>
-              <div className="form-body" style={{ padding: 0 }}>
-                <div className="form-row">
-                  <div className="form-field">
-                    <label className="form-label">Billing Name</label>
-                    <input className="form-input" id="edit-sub-billing" defaultValue={detailSub.billing} />
-                  </div>
-                  <div className="form-field">
-                    <label className="form-label">Billing Email</label>
-                    <input className="form-input" id="edit-sub-billingEmail" defaultValue={detailSub.billingEmail || ""} />
-                  </div>
-                </div>
-                <div className="form-row">
-                  <div className="form-field">
-                    <label className="form-label">Recipient Name</label>
-                    <input className="form-input" id="edit-sub-recipient" defaultValue={detailSub.recipient} />
-                  </div>
-                  <div className="form-field">
-                    <label className="form-label">Recipient Email</label>
-                    <input className="form-input" id="edit-sub-recipientEmail" defaultValue={detailSub.recipientEmail || ""} />
-                  </div>
-                </div>
-                <div className="form-row">
-                  <div className="form-field">
-                    <label className="form-label">Order #</label>
-                    <input className="form-input" id="edit-sub-order" defaultValue={detailSub.order} />
-                  </div>
-                  <div className="form-field">
-                    <label className="form-label">Type</label>
-                    <select className="form-select" id="edit-sub-type" defaultValue={detailSub.type}>
-                      <option>3-month</option>
-                      <option>6-month</option>
-                      <option>12-month</option>
-                      <option>monthly</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="form-row">
-                  <div className="form-field">
-                    <label className="form-label">Delivery</label>
-                    <select className="form-select" id="edit-sub-delivery" defaultValue={detailSub.delivery}>
-                      <option>ship</option>
-                      <option>pickup</option>
-                    </select>
-                  </div>
-                  <div className="form-field">
-                    <label className="form-label">Signup Date</label>
-                    <input className="form-input" type="date" id="edit-sub-signupDate" defaultValue={detailSub.signupDate || ""} />
-                  </div>
-                </div>
-                <div className="form-row">
-                  <div className="form-field">
-                    <label className="form-label">Start Month (YYYY-MM)</label>
-                    <input className="form-input" id="edit-sub-start" defaultValue={detailSub.start} />
-                  </div>
-                  <div className="form-field">
-                    <label className="form-label">End Month (YYYY-MM)</label>
-                    <input className="form-input" id="edit-sub-end" defaultValue={detailSub.end || ""} />
-                  </div>
-                </div>
-              </div>
-
-              <button 
-                className="ship-btn"
-                style={{ marginTop: 16, background: 'var(--text3)' }}
-                onClick={() => {
-                  const billing = (document.getElementById('edit-sub-billing') as HTMLInputElement).value;
-                  const billingEmail = (document.getElementById('edit-sub-billingEmail') as HTMLInputElement).value;
-                  const recipient = (document.getElementById('edit-sub-recipient') as HTMLInputElement).value;
-                  const recipientEmail = (document.getElementById('edit-sub-recipientEmail') as HTMLInputElement).value;
-                  const order = (document.getElementById('edit-sub-order') as HTMLInputElement).value;
-                  const type = (document.getElementById('edit-sub-type') as HTMLSelectElement).value;
-                  const delivery = (document.getElementById('edit-sub-delivery') as HTMLSelectElement).value;
-                  const start = (document.getElementById('edit-sub-start') as HTMLInputElement).value;
-                  const end = (document.getElementById('edit-sub-end') as HTMLInputElement).value || null;
-                  const signupDate = (document.getElementById('edit-sub-signupDate') as HTMLInputElement).value || null;
-                  
-                  updateSubscriber(detailSub.id, billing, billingEmail, recipient, recipientEmail, order, type, delivery, start, end, signupDate);
-                }}
-              >
-                <Save size={14} style={{ marginRight: 6, display: 'inline' }} />
-                Save Subscriber Changes
-              </button>
+              <EditSubscriberForm sub={detailSub} onSave={updateSubscriber} />
             </div>
 
             <div className="detail-section">
