@@ -31,7 +31,7 @@ import './App.css';
 import { MONTHS } from './constants';
 import { MUSIC_QUOTES } from './quotes';
 import type { Subscriber, Catalog, HistoryEntry, SubscriptionType, DeliveryMethod } from './types';
-import { isActiveForMonth, isNewThisMonth, isLapsingThisMonth, statusFor, fmt, getCurrentMonth, getDaysUntilRenewal, calculateEndMonth, getNextMonth, getMonthOptions } from './utils';
+import { isActiveForMonth, isNewThisMonth, isLapsingThisMonth, statusFor, fmt, getCurrentMonth, getDaysUntilRenewal, calculateEndMonth } from './utils';
 import MonthSelector from './MonthSelector';
 import logo from './assets/logo.png';
 import { supabase } from './supabase';
