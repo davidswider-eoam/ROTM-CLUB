@@ -1063,15 +1063,31 @@ function App() {
   const [isExportingPirateShip, setIsExportingPirateShip] = useState(false);
 
   const exportPirateShipBatch = async () => {
-    // Only export multi-month subscriptions (3-month, 6-month, 12-month)
-    const toExport = activeSubs.filter(s => 
+    // Helper to identify subscribers requiring special attention or having notes
+    const hasSpecialAttentionOrNotes = (s: Subscriber) => {
+      const hasFlag = !!s.flag;
+      const hasGeneralNotes = !!(s.notes && s.notes.trim().length > 0);
+      const hasMonthlyNote = !!(s.monthly_notes?.[selectedMonth] && s.monthly_notes[selectedMonth].trim().length > 0);
+      return hasFlag || hasGeneralNotes || hasMonthlyNote;
+    };
+
+    // Candidates: 3-month, 6-month, 12-month delivery='ship' who haven't shipped yet
+    const eligibleCandidates = activeSubs.filter(s => 
       s.delivery === 'ship' && 
       !shipped.has(s.id) && 
       s.type !== 'monthly'
     );
+
+    // Exclude any subscribers that have flags, general notes, or month notes
+    const toExport = eligibleCandidates.filter(s => !hasSpecialAttentionOrNotes(s));
+    const excludedAttentionList = eligibleCandidates.filter(s => hasSpecialAttentionOrNotes(s));
     
     if (toExport.length === 0) {
-      alert(`No pending 3-month, 6-month, or 12-month 'Ship' subscribers found for ${fmt(selectedMonth)}.`);
+      if (excludedAttentionList.length > 0) {
+        alert(`All ${excludedAttentionList.length} pending fixed-term subscribers have special notes or flags tagged to them and were left off for manual handling.`);
+      } else {
+        alert(`No pending 3-month, 6-month, or 12-month 'Ship' subscribers found for ${fmt(selectedMonth)}.`);
+      }
       return;
     }
 
@@ -1185,7 +1201,10 @@ function App() {
       );
 
       // Do NOT auto-change shipping status
-      alert(`✅ Pirate Ship batch CSV downloaded with ${toExport.length} shipments!\n\nAll subscriber shipping statuses have been left unchanged.`);
+      const alertMsg = excludedAttentionList.length > 0
+        ? `✅ Pirate Ship batch CSV downloaded with ${toExport.length} shipments!\n\n📋 ${excludedAttentionList.length} subscriber(s) with special notes or flags were left off the batch so you can review them individually.`
+        : `✅ Pirate Ship batch CSV downloaded with ${toExport.length} shipments!\n\nAll subscriber shipping statuses have been left unchanged.`;
+      alert(alertMsg);
     } catch (e: any) {
       console.error("Export error:", e);
       alert("Error generating shipping batch: " + e.message);
