@@ -261,6 +261,16 @@ function App() {
   const [newSignupDate, setNewSignupDate] = useState("");
   const [isAutoFilling, setIsAutoFilling] = useState(false);
   const [isAddSubmitting, setIsAddSubmitting] = useState(false);
+  const [selectedAttentionIds, setSelectedAttentionIds] = useState<Set<string>>(new Set());
+
+  const toggleAttentionSelection = (id: string) => {
+    setSelectedAttentionIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const handleNewTypeChange = (type: SubscriptionType) => {
     setNewType(type);
@@ -1062,32 +1072,17 @@ function App() {
 
   const [isExportingPirateShip, setIsExportingPirateShip] = useState(false);
 
-  const exportPirateShipBatch = async () => {
-    // Helper to identify subscribers requiring special attention or having notes
-    const hasSpecialAttentionOrNotes = (s: Subscriber) => {
-      const hasFlag = !!s.flag;
-      const hasGeneralNotes = !!(s.notes && s.notes.trim().length > 0);
-      const hasMonthlyNote = !!(s.monthly_notes?.[selectedMonth] && s.monthly_notes[selectedMonth].trim().length > 0);
-      return hasFlag || hasGeneralNotes || hasMonthlyNote;
-    };
+  // Helper to identify subscribers requiring special attention or having notes
+  const hasSpecialAttentionOrNotes = (s: Subscriber) => {
+    const hasFlag = !!s.flag;
+    const hasGeneralNotes = !!(s.notes && s.notes.trim().length > 0);
+    const hasMonthlyNote = !!(s.monthly_notes?.[selectedMonth] && s.monthly_notes[selectedMonth].trim().length > 0);
+    return hasFlag || hasGeneralNotes || hasMonthlyNote;
+  };
 
-    // Candidates: 3-month, 6-month, 12-month delivery='ship' who haven't shipped yet
-    const eligibleCandidates = activeSubs.filter(s => 
-      s.delivery === 'ship' && 
-      !shipped.has(s.id) && 
-      s.type !== 'monthly'
-    );
-
-    // Exclude any subscribers that have flags, general notes, or month notes
-    const toExport = eligibleCandidates.filter(s => !hasSpecialAttentionOrNotes(s));
-    const excludedAttentionList = eligibleCandidates.filter(s => hasSpecialAttentionOrNotes(s));
-    
+  const generateAndDownloadPirateShipCSV = async (toExport: Subscriber[], batchLabel: string) => {
     if (toExport.length === 0) {
-      if (excludedAttentionList.length > 0) {
-        alert(`All ${excludedAttentionList.length} pending fixed-term subscribers have special notes or flags tagged to them and were left off for manual handling.`);
-      } else {
-        alert(`No pending 3-month, 6-month, or 12-month 'Ship' subscribers found for ${fmt(selectedMonth)}.`);
-      }
+      alert(`No subscribers found to export for ${batchLabel}.`);
       return;
     }
 
@@ -1156,7 +1151,9 @@ function App() {
         const email = addr.email || s.recipientEmail || s.billingEmail || "";
         const phone = addr.phone || "";
         const company = addr.company || "";
-        const monthlyNote = s.monthly_notes?.[selectedMonth] ? ` [Note: ${s.monthly_notes[selectedMonth]}]` : "";
+        const monthlyNote = s.monthly_notes?.[selectedMonth] 
+          ? ` [Note: ${s.monthly_notes[selectedMonth]}]` 
+          : (s.notes ? ` [Note: ${s.notes}]` : "");
         const notes = `${recordNote}${monthlyNote}`;
 
         return [
@@ -1184,33 +1181,72 @@ function App() {
         ...rows.map(r => r.join(","))
       ].join("\n");
 
+      const fileSlug = batchLabel.toLowerCase().replace(/\s+/g, '-');
+
       // 6. Download file
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.setAttribute("href", url);
-      link.setAttribute("download", `PirateShip-ROTM-${selectedMonth}.csv`);
+      link.setAttribute("download", `PirateShip-ROTM-${selectedMonth}-${fileSlug}.csv`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
 
       logAction(
-        "Exported Pirate Ship Batch",
+        `Exported Pirate Ship (${batchLabel})`,
         `Exported ${toExport.length} shipping labels for ${fmt(selectedMonth)} (USPS Media Mail)`,
         'shipping'
       );
 
-      // Do NOT auto-change shipping status
-      const alertMsg = excludedAttentionList.length > 0
-        ? `✅ Pirate Ship batch CSV downloaded with ${toExport.length} shipments!\n\n📋 ${excludedAttentionList.length} subscriber(s) with special notes or flags were left off the batch so you can review them individually.`
-        : `✅ Pirate Ship batch CSV downloaded with ${toExport.length} shipments!\n\nAll subscriber shipping statuses have been left unchanged.`;
-      alert(alertMsg);
+      alert(`✅ ${batchLabel} CSV downloaded with ${toExport.length} shipments!\n\nAll subscriber shipping statuses have been left unchanged.`);
     } catch (e: any) {
       console.error("Export error:", e);
       alert("Error generating shipping batch: " + e.message);
     } finally {
       setIsExportingPirateShip(false);
     }
+  };
+
+  const exportCleanBatch = () => {
+    const cleanToExport = activeSubs.filter(s => 
+      s.delivery === 'ship' && 
+      !shipped.has(s.id) && 
+      s.type !== 'monthly' && 
+      !hasSpecialAttentionOrNotes(s)
+    );
+
+    if (cleanToExport.length === 0) {
+      alert(`No pending clean (no notes/flags) fixed-term subscribers found for ${fmt(selectedMonth)}.`);
+      return;
+    }
+
+    generateAndDownloadPirateShipCSV(cleanToExport, "Clean Batch");
+  };
+
+  const exportAttentionBatch = () => {
+    const allPendingAttention = activeSubs.filter(s => 
+      s.delivery === 'ship' && 
+      !shipped.has(s.id) && 
+      s.type !== 'monthly' && 
+      hasSpecialAttentionOrNotes(s)
+    );
+
+    if (allPendingAttention.length === 0) {
+      alert(`No pending fixed-term subscribers with special notes or flags found for ${fmt(selectedMonth)}.`);
+      return;
+    }
+
+    const selectedList = allPendingAttention.filter(s => selectedAttentionIds.has(s.id));
+
+    if (selectedList.length === 0) {
+      if (confirm(`You have not individually checked any attention subscribers yet.\n\nWould you like to export all ${allPendingAttention.length} pending attention subscribers now?`)) {
+        generateAndDownloadPirateShipCSV(allPendingAttention, "Attention Batch");
+      }
+      return;
+    }
+
+    generateAndDownloadPirateShipCSV(selectedList, "Attention Batch");
   };
 
   const downloadShippingCSV = () => {
@@ -1422,6 +1458,34 @@ function App() {
           
           <OrderLink order={sub.order} />
           
+          {sub.delivery === 'ship' && sub.type !== 'monthly' && !isShipped && hasSpecialAttentionOrNotes(sub) && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleAttentionSelection(sub.id);
+              }}
+              style={{
+                background: selectedAttentionIds.has(sub.id) ? "#d97706" : "var(--surface2)",
+                color: selectedAttentionIds.has(sub.id) ? "#ffffff" : "var(--text2)",
+                border: selectedAttentionIds.has(sub.id) ? "1px solid #b45309" : "1px solid var(--border2)",
+                borderRadius: 4,
+                padding: "3px 8px",
+                fontSize: 10,
+                fontWeight: 700,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                fontFamily: "var(--font-mono)",
+                boxShadow: selectedAttentionIds.has(sub.id) ? "0 1px 3px rgba(217, 119, 6, 0.3)" : "none"
+              }}
+              title={selectedAttentionIds.has(sub.id) ? "Included in Attention Batch Export (Click to remove)" : "Click to include in Attention Batch Export"}
+            >
+              {selectedAttentionIds.has(sub.id) ? "✓ Ready for Export" : "+ Add to Export"}
+            </button>
+          )}
+
           <button 
             style={{ background: "none", border: "1px solid #2e2e2e", color: "#888", borderRadius: "4px", padding: "3px 8px", cursor: "pointer", fontSize: "10px", fontFamily: "DM Mono,monospace" }}
             onClick={(e) => { e.stopPropagation(); setDetailSub(sub); }}
@@ -1839,7 +1903,7 @@ function App() {
                   
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                     <button 
-                      onClick={exportPirateShipBatch}
+                      onClick={exportCleanBatch}
                       disabled={isExportingPirateShip}
                       style={{ 
                         background: "#0284c7", 
@@ -1856,7 +1920,7 @@ function App() {
                         fontWeight: 700,
                         boxShadow: "0 2px 4px rgba(2, 132, 199, 0.2)"
                       }}
-                      title="Fetch live addresses from BigCommerce and export a ready-to-print Pirate Ship Media Mail CSV"
+                      title="Fetch live addresses from BigCommerce and export clean 3, 6, 12-month subscribers (no notes or flags)"
                     >
                       {isExportingPirateShip ? (
                         <>
@@ -1866,9 +1930,37 @@ function App() {
                       ) : (
                         <>
                           <Package size={12} />
-                          📦 Export Pirate Ship Batch
+                          📦 Export Clean Batch ({activeSubs.filter(s => s.delivery === 'ship' && !shipped.has(s.id) && s.type !== 'monthly' && !hasSpecialAttentionOrNotes(s)).length})
                         </>
                       )}
+                    </button>
+
+                    <button 
+                      onClick={exportAttentionBatch}
+                      disabled={isExportingPirateShip}
+                      style={{ 
+                        background: selectedAttentionIds.size > 0 ? "#d97706" : "var(--surface2)", 
+                        color: selectedAttentionIds.size > 0 ? "#ffffff" : "var(--text)", 
+                        border: selectedAttentionIds.size > 0 ? "1px solid #b45309" : "1px solid var(--border2)", 
+                        borderRadius: 6, 
+                        padding: "6px 12px", 
+                        fontSize: 11, 
+                        cursor: isExportingPirateShip ? "wait" : "pointer", 
+                        display: "flex", 
+                        alignItems: "center", 
+                        gap: 6, 
+                        fontFamily: "var(--font-mono)",
+                        fontWeight: 700,
+                        boxShadow: selectedAttentionIds.size > 0 ? "0 2px 4px rgba(217, 119, 6, 0.2)" : "none"
+                      }}
+                      title="Export reviewed subscribers with special notes or flags"
+                    >
+                      <Sparkles size={12} />
+                      ⭐ Export Attention Batch ({(() => {
+                        const pendingAttn = activeSubs.filter(s => s.delivery === 'ship' && !shipped.has(s.id) && s.type !== 'monthly' && hasSpecialAttentionOrNotes(s));
+                        const readyCount = pendingAttn.filter(s => selectedAttentionIds.has(s.id)).length;
+                        return readyCount > 0 ? `${readyCount} ready` : `${pendingAttn.length} pending`;
+                      })()})
                     </button>
 
                     <button 
@@ -2112,13 +2204,41 @@ function App() {
                 <div style={{ fontWeight: 800, fontSize: 16 }}>Monthly Action Center</div>
                 <div style={{ fontFamily: "DM Mono,monospace", fontSize: 11, color: "var(--text3)", marginTop: 4 }}>Subscribers needing special attention for {fmt(selectedMonth)}</div>
               </div>
-              <button 
-                onClick={printGoldenTickets}
-                className="submit-btn" 
-                style={{ width: "auto", padding: "8px 16px", fontSize: 11, display: "flex", alignItems: "center", gap: 6, background: "#d97706" }}
-              >
-                <Printer size={14} /> Print Golden Tickets
-              </button>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <button 
+                  onClick={exportAttentionBatch}
+                  disabled={isExportingPirateShip}
+                  style={{ 
+                    background: "#0284c7", 
+                    color: "#ffffff", 
+                    border: "none", 
+                    borderRadius: 6, 
+                    padding: "8px 16px", 
+                    fontSize: 11, 
+                    cursor: isExportingPirateShip ? "wait" : "pointer", 
+                    display: "flex", 
+                    alignItems: "center", 
+                    gap: 6, 
+                    fontFamily: "var(--font-mono)", 
+                    fontWeight: 700,
+                    boxShadow: "0 2px 4px rgba(2, 132, 199, 0.2)"
+                  }}
+                  title="Export reviewed attention subscribers for Pirate Ship"
+                >
+                  <Sparkles size={13} /> ⭐ Export Attention Batch ({(() => {
+                    const pendingAttn = subscribers.filter(s => isActiveForMonth(s, selectedMonth) && s.delivery === 'ship' && !(s.shipped_months || []).includes(selectedMonth) && s.type !== 'monthly' && hasSpecialAttentionOrNotes(s));
+                    const readyCount = pendingAttn.filter(s => selectedAttentionIds.has(s.id)).length;
+                    return readyCount > 0 ? `${readyCount} ready` : `${pendingAttn.length} pending`;
+                  })()})
+                </button>
+                <button 
+                  onClick={printGoldenTickets}
+                  className="submit-btn" 
+                  style={{ width: "auto", padding: "8px 16px", fontSize: 11, display: "flex", alignItems: "center", gap: 6, background: "#d97706" }}
+                >
+                  <Printer size={14} /> Print Golden Tickets
+                </button>
+              </div>
             </div>
 
             {(() => {
