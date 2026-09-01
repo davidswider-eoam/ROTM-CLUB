@@ -22,7 +22,6 @@ import {
   Loader2,
   Inbox,
   AlertTriangle,
-  RotateCcw,
   HelpCircle
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
@@ -905,92 +904,6 @@ function App() {
     logAction("Workflow Update", `${item} toggled for ${fmt(month)}`, 'catalog');
   }
 
-  const [isUndoing72, setIsUndoing72] = useState(false);
-
-  const undoPirateShip72Batch = async () => {
-    const BATCH_72_ORDERS = new Set([
-      "16131", "16089", "16028", "16016", "15749", "15905", "15870", "15869", "15867",
-      "15864", "15860", "15834", "15841", "15685", "15427", "15242", "15346", "15373",
-      "13031", "15298", "15235", "15354", "15356", "15388", "15292", "15417", "15238",
-      "15252", "15323", "15187", "15421", "15080", "15572", "15079", "15428", "15457",
-      "15447", "15507", "15573", "15723", "15169", "15413", "15403", "15638", "15461",
-      "15505", "15463", "15335", "15366", "15231", "15223", "15300", "15375", "15368",
-      "15419", "15390", "15078", "15462", "15275", "15342", "15345", "15383", "16053",
-      "15541", "15256", "16092", "15832", "16079", "15988", "16394"
-    ]);
-
-    const BATCH_72_NAMES = new Set([
-      "sem ortiz", "s. segat", "maggie casey", "karen lentz", "yasemin goksenin",
-      "matthew hellman", "bronwen haskel", "liv cohen", "hannah claytor", "randy cox",
-      "david gibson", "bradley hiatt", "matthew mcmullen", "jacob hart", "ben yarbrough",
-      "scott riback", "rick noble", "joshua anderson", "michael \"funki child\" tuckman",
-      "stephanie stattel", "william gillespie", "matt ward", "michael broek", "michael campola",
-      "john grimes", "brooke ashleigh", "amanda mitchell", "zoe nillstein", "colin rinaker",
-      "john buckholz", "robert gregory", "kristin spanos", "alex vinson", "ty barkley",
-      "jason fine", "ryan bruce", "karen obyrne", "joel rivlin", "matthew robbins",
-      "michele gutierrez", "tim krone", "david summers", "blake tartt", "max lescohier",
-      "jim barnett", "scott whatley", "steven hild", "paul masquelier", "andrew marion",
-      "maddie schwartz", "josh beckman", "alan owens", "tom smith", "bonnie brock",
-      "neil sekhri", "peter smith", "jonathan tien", "wes mckeithen", "david leflar",
-      "jennie goloboy", "alison stroup", "leever and steven karkanen", "ben campbell",
-      "david norman iii", "richard meagher", "andrew olinger", "phil adams", "stuart mccluer",
-      "rebecca frankum", "justin carter", "angela brown", "bruce swain"
-    ]);
-
-    setIsUndoing72(true);
-    try {
-      const monthToUncheck = "2026-08";
-
-      // Find subscribers matching the 72 batch by order ID or name
-      const targets = subscribers.filter(s => {
-        const orderClean = (s.order || "").replace("#", "").trim();
-        const nameClean = (s.recipient || s.billing || "").toLowerCase().trim();
-        const matchesOrder = orderClean && BATCH_72_ORDERS.has(orderClean);
-        const matchesName = BATCH_72_NAMES.has(nameClean);
-        return matchesOrder || matchesName;
-      });
-
-      if (targets.length === 0) {
-        alert("No subscribers found matching the 72 batch.");
-        return;
-      }
-
-      // Filter only those that currently have 2026-08 marked as shipped
-      const toUpdate = targets.filter(s => (s.shipped_months || []).includes(monthToUncheck));
-
-      const updatedSubscribers = subscribers.map(s => {
-        const isTarget = toUpdate.some(t => t.id === s.id);
-        if (!isTarget) return s;
-        return {
-          ...s,
-          shipped_months: (s.shipped_months || []).filter(m => m !== monthToUncheck)
-        };
-      });
-
-      // Optimistic update
-      setSubscribers(updatedSubscribers);
-
-      // Save to Supabase
-      await Promise.all(toUpdate.map(sub => {
-        const newShipped = (sub.shipped_months || []).filter(m => m !== monthToUncheck);
-        return supabase.from('subscribers').update({ shipped_months: newShipped }).eq('id', sub.id);
-      }));
-
-      logAction(
-        "Undid Batch Ship",
-        `Unchecked the 72 batch subscribers for Aug 2026. Preserved prior shipped packages.`,
-        'shipping'
-      );
-
-      alert(`✅ Done! Successfully unchecked all ${toUpdate.length} subscribers from the 09:11 AM batch.\n\nYour other ~50 previously shipped packages remain checked as SHIPPED!`);
-    } catch (e: any) {
-      console.error("Undo error:", e);
-      alert("Error undoing batch: " + e.message);
-    } finally {
-      setIsUndoing72(false);
-    }
-  };
-
   const [isSyncingBC, setIsSyncingBC] = useState(false);
 
   const syncShippedWithBigCommerce = async () => {
@@ -1837,50 +1750,6 @@ function App() {
 
             {viewMode === 'shipping' ? (
               <>
-                <div style={{
-                  background: "#fffbeb",
-                  border: "1px solid #fde68a",
-                  borderRadius: 8,
-                  padding: "12px 18px",
-                  margin: "16px 24px 0",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 12
-                }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <RotateCcw size={18} style={{ color: "#d97706", flexShrink: 0 }} />
-                    <div>
-                      <div style={{ color: "#92400e", fontSize: 12, fontWeight: 700 }}>
-                        Undo the 72-Subscriber Batch from 09:11 AM?
-                      </div>
-                      <div style={{ color: "#b45309", fontSize: 11, marginTop: 2 }}>
-                        This will uncheck ONLY those 72 subscribers and keep your ~50 previously shipped packages checked!
-                      </div>
-                    </div>
-                  </div>
-                  <button
-                    onClick={undoPirateShip72Batch}
-                    disabled={isUndoing72}
-                    style={{
-                      background: "#d97706",
-                      color: "#fff",
-                      border: "none",
-                      borderRadius: 6,
-                      padding: "8px 16px",
-                      fontSize: 11,
-                      fontWeight: 700,
-                      cursor: isUndoing72 ? "wait" : "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 6,
-                      whiteSpace: "nowrap"
-                    }}
-                  >
-                    <RotateCcw size={12} /> {isUndoing72 ? "Unchecking..." : "↺ Uncheck Those 72 People"}
-                  </button>
-                </div>
-
                 <div className="checklist-header" style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <div 
