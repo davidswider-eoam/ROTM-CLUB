@@ -22,7 +22,8 @@ import {
   Loader2,
   Inbox,
   AlertTriangle,
-  RotateCcw
+  RotateCcw,
+  HelpCircle
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -33,6 +34,7 @@ import { MUSIC_QUOTES } from './quotes';
 import type { Subscriber, Catalog, HistoryEntry, SubscriptionType, DeliveryMethod } from './types';
 import { isActiveForMonth, isNewThisMonth, isLapsingThisMonth, statusFor, fmt, getCurrentMonth, getDaysUntilRenewal, calculateEndMonth } from './utils';
 import MonthSelector from './MonthSelector';
+import HowToGuide from './HowToGuide';
 import logo from './assets/logo.png';
 import { supabase } from './supabase';
 import SupabaseMigration from './SupabaseMigration';
@@ -42,7 +44,7 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-type Tab = 'dashboard' | 'incoming' | 'catalog' | 'contacts' | 'add' | 'history' | 'settings' | 'attention';
+type Tab = 'dashboard' | 'incoming' | 'catalog' | 'contacts' | 'add' | 'history' | 'settings' | 'attention' | 'howto';
 type SubTab = 'all' | 'term' | 'monthly' | 'flagged';
 
 interface EditSubscriberFormProps {
@@ -1716,6 +1718,7 @@ function App() {
           { key: 'catalog', label: 'Catalog', icon: <Disc size={14} /> },
           { key: 'history', label: 'History', icon: <HistoryIcon size={14} /> },
           { key: 'contacts', label: 'Contacts', icon: <Contact size={14} /> },
+          { key: 'howto', label: 'How-To Guide', icon: <HelpCircle size={14} /> },
           { key: 'add', label: '+ Add Sub', icon: <Plus size={14} /> },
           { key: 'settings', label: '', icon: <Settings size={16} /> }
         ].map(({ key, label, icon }) => (
@@ -2845,6 +2848,11 @@ function App() {
               </button>
             </div>
           </div>
+        )}
+
+        {/* ── HOW-TO GUIDE ── */}
+        {activeTab === "howto" && (
+          <HowToGuide />
         )}
       </div>
 
