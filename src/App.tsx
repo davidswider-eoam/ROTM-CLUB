@@ -639,6 +639,7 @@ function App() {
 
   const filteredSubs = useMemo(() => activeSubs.filter(s => {
     if (filter === "unshipped") return !shipped.has(s.id);
+    if (filter === "monthly") return s.type === "monthly";
     if (filter === "pickup") return s.delivery === "pickup";
     if (filter === "flagged") return s.flag || s.notes?.includes("ASK") || s.notes?.includes("!!");
     return true;
@@ -747,8 +748,9 @@ function App() {
     }
   }
 
-  async function bulkToggleShip(ids: string[], shouldShip: boolean) {
-    if (!confirm(`Are you sure you want to mark ${ids.length} subscribers as ${shouldShip ? 'shipped' : 'unshipped'}?`)) return;
+  async function bulkToggleShip(ids: string[], shouldShip: boolean, skipConfirm = false) {
+    if (ids.length === 0) return;
+    if (!skipConfirm && !confirm(`Are you sure you want to mark ${ids.length} subscribers as ${shouldShip ? 'shipped' : 'unshipped'}?`)) return;
     
     setIsBulkLoading(true);
     
@@ -1114,7 +1116,12 @@ function App() {
         'shipping'
       );
 
-      alert(`✅ ${batchLabel} CSV downloaded with ${toExport.length} shipments!\n\nAll subscriber shipping statuses have been left unchanged.`);
+      const markAsShipped = confirm(
+        `✅ ${batchLabel} CSV downloaded with ${toExport.length} shipments!\n\nWould you like to mark these ${toExport.length} subscribers as SHIPPED for ${fmt(selectedMonth)}?`
+      );
+      if (markAsShipped) {
+        await bulkToggleShip(toExport.map(s => s.id), true, true);
+      }
     } catch (e: any) {
       console.error("Export error:", e);
       alert("Error generating shipping batch: " + e.message);
@@ -1136,19 +1143,34 @@ function App() {
       return;
     }
 
-    generateAndDownloadPirateShipCSV(cleanToExport, "Clean Batch");
+    generateAndDownloadPirateShipCSV(cleanToExport, "Clean Batch (Fixed-Term)");
+  };
+
+  const exportMonthlyBatch = () => {
+    const cleanMonthlyToExport = activeSubs.filter(s => 
+      s.delivery === 'ship' && 
+      !shipped.has(s.id) && 
+      s.type === 'monthly' && 
+      !hasSpecialAttentionOrNotes(s)
+    );
+
+    if (cleanMonthlyToExport.length === 0) {
+      alert(`No pending clean (no notes/flags) monthly subscribers found for ${fmt(selectedMonth)}.`);
+      return;
+    }
+
+    generateAndDownloadPirateShipCSV(cleanMonthlyToExport, "Monthly Batch");
   };
 
   const exportAttentionBatch = () => {
     const allPendingAttention = activeSubs.filter(s => 
       s.delivery === 'ship' && 
       !shipped.has(s.id) && 
-      s.type !== 'monthly' && 
       hasSpecialAttentionOrNotes(s)
     );
 
     if (allPendingAttention.length === 0) {
-      alert(`No pending fixed-term subscribers with special notes or flags found for ${fmt(selectedMonth)}.`);
+      alert(`No pending subscribers with special notes or flags found for ${fmt(selectedMonth)}.`);
       return;
     }
 
@@ -1373,7 +1395,7 @@ function App() {
           
           <OrderLink order={sub.order} />
           
-          {sub.delivery === 'ship' && sub.type !== 'monthly' && !isShipped && hasSpecialAttentionOrNotes(sub) && (
+          {sub.delivery === 'ship' && !isShipped && hasSpecialAttentionOrNotes(sub) && (
             <button
               type="button"
               onClick={(e) => {
@@ -1792,7 +1814,7 @@ function App() {
                         fontWeight: 700,
                         boxShadow: "0 2px 4px rgba(2, 132, 199, 0.2)"
                       }}
-                      title="Fetch live addresses from BigCommerce and export clean 3, 6, 12-month subscribers (no notes or flags)"
+                      title="Fetch live addresses from BigCommerce and export clean fixed-term (3, 6, 12-month) subscribers (no notes or flags)"
                     >
                       {isExportingPirateShip ? (
                         <>
@@ -1803,6 +1825,39 @@ function App() {
                         <>
                           <Package size={12} />
                           📦 Export Clean Batch ({activeSubs.filter(s => s.delivery === 'ship' && !shipped.has(s.id) && s.type !== 'monthly' && !hasSpecialAttentionOrNotes(s)).length})
+                        </>
+                      )}
+                    </button>
+
+                    <button 
+                      onClick={exportMonthlyBatch}
+                      disabled={isExportingPirateShip}
+                      style={{ 
+                        background: "#4f46e5", 
+                        color: "#ffffff", 
+                        border: "1px solid #4338ca", 
+                        borderRadius: 6, 
+                        padding: "6px 14px", 
+                        fontSize: 11, 
+                        cursor: isExportingPirateShip ? "wait" : "pointer", 
+                        display: "flex", 
+                        alignItems: "center", 
+                        gap: 6, 
+                        fontFamily: "var(--font-mono)",
+                        fontWeight: 700,
+                        boxShadow: "0 2px 4px rgba(79, 70, 229, 0.2)"
+                      }}
+                      title="Fetch live addresses from BigCommerce and export clean Monthly subscribers (no notes or flags)"
+                    >
+                      {isExportingPirateShip ? (
+                        <>
+                          <Loader2 size={12} className="animate-spin" />
+                          Fetching BC Addresses...
+                        </>
+                      ) : (
+                        <>
+                          <Package size={12} />
+                          📦 Export Monthly Batch ({activeSubs.filter(s => s.delivery === 'ship' && !shipped.has(s.id) && s.type === 'monthly' && !hasSpecialAttentionOrNotes(s)).length})
                         </>
                       )}
                     </button>
@@ -1829,7 +1884,7 @@ function App() {
                     >
                       <Sparkles size={12} />
                       ⭐ Export Attention Batch ({(() => {
-                        const pendingAttn = activeSubs.filter(s => s.delivery === 'ship' && !shipped.has(s.id) && s.type !== 'monthly' && hasSpecialAttentionOrNotes(s));
+                        const pendingAttn = activeSubs.filter(s => s.delivery === 'ship' && !shipped.has(s.id) && hasSpecialAttentionOrNotes(s));
                         const readyCount = pendingAttn.filter(s => selectedAttentionIds.has(s.id)).length;
                         return readyCount > 0 ? `${readyCount} ready` : `${pendingAttn.length} pending`;
                       })()})
@@ -1904,7 +1959,7 @@ function App() {
                   </div>
                 </div>
                 <div className="filter-bar">
-                  {[["all", "All"], ["unshipped", "Unshipped"], ["pickup", "Pickup"], ["flagged", "Flagged"]].map(([k, l]) => (
+                  {[["all", "All"], ["unshipped", "Unshipped"], ["monthly", "Monthly"], ["pickup", "Pickup"], ["flagged", "Flagged"]].map(([k, l]) => (
                     <button 
                       key={k} 
                       className={cn("filter-btn", filter === k && "active")} 
@@ -1921,10 +1976,78 @@ function App() {
                     {(['monthly', '3-month', '6-month', '12-month'] as SubscriptionType[]).map(type => {
                       const typeList = toShip.filter(s => s.type === type);
                       if (typeList.length === 0) return null;
+                      const allTypeShipped = typeList.every(s => shipped.has(s.id));
                       return (
                         <div key={type} style={{ marginTop: 8 }}>
-                          <div style={{ padding: "8px 24px", fontSize: 10, fontWeight: 800, textTransform: 'uppercase', color: 'var(--text3)', background: 'var(--surface2)', borderBottom: '1px solid var(--border)' }}>
-                            {type} — {typeList.length}
+                          <div style={{ 
+                            padding: "8px 24px", 
+                            fontSize: 10, 
+                            fontWeight: 800, 
+                            textTransform: 'uppercase', 
+                            color: 'var(--text3)', 
+                            background: 'var(--surface2)', 
+                            borderBottom: '1px solid var(--border)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between'
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <div 
+                                className={cn("check-box", typeList.length > 0 && allTypeShipped && "checked")}
+                                style={{ width: 16, height: 16, borderRadius: 3, cursor: 'pointer' }}
+                                onClick={() => bulkToggleShip(typeList.map(s => s.id), !allTypeShipped)}
+                                title={`Mark all ${typeList.length} ${type} subscribers as ${allTypeShipped ? 'unshipped' : 'shipped'}`}
+                              >
+                                {typeList.length > 0 && allTypeShipped && <Check size={10} strokeWidth={4} color="#fff" />}
+                              </div>
+                              <span>{type} — {typeList.length}</span>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              {type === 'monthly' && (
+                                <button
+                                  onClick={exportMonthlyBatch}
+                                  disabled={isExportingPirateShip}
+                                  style={{
+                                    background: '#4f46e5',
+                                    color: '#ffffff',
+                                    border: 'none',
+                                    borderRadius: 4,
+                                    padding: '3px 8px',
+                                    fontSize: 10,
+                                    cursor: isExportingPirateShip ? 'wait' : 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 4,
+                                    fontFamily: 'var(--font-mono)',
+                                    fontWeight: 700
+                                  }}
+                                  title="Export clean Monthly subscribers for Pirate Ship"
+                                >
+                                  <Package size={10} /> Export Batch
+                                </button>
+                              )}
+                              <button
+                                onClick={() => bulkToggleShip(typeList.map(s => s.id), true)}
+                                style={{
+                                  background: 'var(--surface)',
+                                  color: 'var(--text)',
+                                  border: '1px solid var(--border2)',
+                                  borderRadius: 4,
+                                  padding: '3px 8px',
+                                  fontSize: 10,
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 4,
+                                  fontFamily: 'var(--font-mono)',
+                                  fontWeight: 600
+                                }}
+                                title={`Mark all ${typeList.length} ${type} subscribers as shipped`}
+                              >
+                                <Check size={10} /> Ship All ({typeList.length})
+                              </button>
+                            </div>
                           </div>
                           {typeList.map(s => <SubRow key={s.id} sub={s} mode="shipping" />)}
                         </div>
@@ -2098,7 +2221,7 @@ function App() {
                   title="Export reviewed attention subscribers for Pirate Ship"
                 >
                   <Sparkles size={13} /> ⭐ Export Attention Batch ({(() => {
-                    const pendingAttn = subscribers.filter(s => isActiveForMonth(s, selectedMonth) && s.delivery === 'ship' && !(s.shipped_months || []).includes(selectedMonth) && s.type !== 'monthly' && hasSpecialAttentionOrNotes(s));
+                    const pendingAttn = subscribers.filter(s => isActiveForMonth(s, selectedMonth) && s.delivery === 'ship' && !(s.shipped_months || []).includes(selectedMonth) && hasSpecialAttentionOrNotes(s));
                     const readyCount = pendingAttn.filter(s => selectedAttentionIds.has(s.id)).length;
                     return readyCount > 0 ? `${readyCount} ready` : `${pendingAttn.length} pending`;
                   })()})
