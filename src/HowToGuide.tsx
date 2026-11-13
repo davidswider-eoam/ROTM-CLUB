@@ -172,7 +172,7 @@ export const HowToGuide: React.FC = () => {
                 </div>
                 <div style={{ fontSize: 12, color: '#475569', lineHeight: 1.6 }}>
                   • <strong>3-Month, 6-Month, 12-Month Subscriptions</strong>: Fulfill via <strong>Pirate Ship</strong> using the <strong>`📦 Export Clean Batch`</strong> button.<br />
-                  • <strong>Monthly Subscriptions</strong>: You can fulfill monthly subscribers <strong>manually</strong> in BigCommerce as recurring orders come in, OR <strong>in bulk</strong> using the <strong>`📦 Export Monthly Batch`</strong> button and section-level <strong>`✓ Ship All`</strong> controls on the Shipping Checklist.
+                  • <strong>Monthly Subscriptions</strong>: You can fulfill monthly subscribers <strong>manually</strong>, OR select them <strong>5 or 6 at a time</strong> using the <strong>`+ Add to Batch`</strong> button on each row, and export them together using <strong>`📦 Export Monthly Batch`</strong> or <strong>`✓ Ship Selected`</strong>!
                 </div>
               </div>
 
@@ -184,16 +184,16 @@ export const HowToGuide: React.FC = () => {
                   <div style={badgeNumberStyle}>A</div>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 4, color: 'var(--text)' }}>
-                      Step 1: Export the Clean Batch (Fixed-Term or Monthly)
+                      Step 1: Export Batches (Fixed-Term or Selected Monthly)
                     </div>
                     <div style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.6 }}>
-                      On the Shipping Checklist, click the blue button <strong>`📦 Export Clean Batch (X)`</strong> for fixed-term subscribers, or the indigo button <strong>`📦 Export Monthly Batch (X)`</strong> for monthly subscribers.
-                      This automatically pulls real recipient mailing addresses from BigCommerce for subscribers who have <strong>no notes and no flags</strong>.
+                      • <strong>Fixed-Term Clean Batch</strong>: Click the blue <strong>`📦 Export Clean Batch`</strong> button to export all clean fixed-term shipments.<br />
+                      • <strong>Monthly Batch (Custom Selection)</strong>: In the Shipping Checklist, click <strong>`+ Add to Batch`</strong> on any monthly subscribers you are ready to fulfill (e.g. 5 or 6 at a time). Then click the indigo <strong>`📦 Export Monthly Batch (X ready)`</strong> button (or <strong>`✓ Ship Selected`</strong>) in the header!
                       <div style={{ marginTop: 6, fontFamily: 'var(--font-mono)', fontSize: 11, color: '#0284c7' }}>
                         📥 Downloads: PirateShip-ROTM-YYYY-MM-clean-batch-fixed-term.csv or PirateShip-ROTM-YYYY-MM-monthly-batch.csv
                       </div>
                       <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text3)' }}>
-                        💡 <em>Tip: Upon download, you will be prompted if you want to mark these subscribers as shipped in ROTM Club immediately. You can also filter by "Monthly" on the Shipping Checklist to review or bulk ship them anytime.</em>
+                        💡 <em>Tip: Upon download, you will be prompted if you want to mark those exported subscribers as shipped in ROTM Club immediately.</em>
                       </div>
                     </div>
                   </div>

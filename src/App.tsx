@@ -263,9 +263,19 @@ function App() {
   const [isAutoFilling, setIsAutoFilling] = useState(false);
   const [isAddSubmitting, setIsAddSubmitting] = useState(false);
   const [selectedAttentionIds, setSelectedAttentionIds] = useState<Set<string>>(new Set());
+  const [selectedMonthlyIds, setSelectedMonthlyIds] = useState<Set<string>>(new Set());
 
   const toggleAttentionSelection = (id: string) => {
     setSelectedAttentionIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleMonthlySelection = (id: string) => {
+    setSelectedMonthlyIds(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -1147,19 +1157,32 @@ function App() {
   };
 
   const exportMonthlyBatch = () => {
-    const cleanMonthlyToExport = activeSubs.filter(s => 
+    const allPendingMonthly = activeSubs.filter(s => 
       s.delivery === 'ship' && 
       !shipped.has(s.id) && 
-      s.type === 'monthly' && 
-      !hasSpecialAttentionOrNotes(s)
+      s.type === 'monthly'
     );
 
-    if (cleanMonthlyToExport.length === 0) {
-      alert(`No pending clean (no notes/flags) monthly subscribers found for ${fmt(selectedMonth)}.`);
+    if (allPendingMonthly.length === 0) {
+      alert(`No pending monthly subscribers found to ship for ${fmt(selectedMonth)}.`);
       return;
     }
 
-    generateAndDownloadPirateShipCSV(cleanMonthlyToExport, "Monthly Batch");
+    const selectedList = allPendingMonthly.filter(s => selectedMonthlyIds.has(s.id));
+
+    if (selectedList.length === 0) {
+      if (confirm(`You have not selected any individual monthly subscribers yet.\n\nWould you like to export all ${allPendingMonthly.length} pending monthly subscribers now?\n\n(Tip: Click "+ Add to Batch" on monthly subscribers to pick 5 or 6 at a time)`)) {
+        generateAndDownloadPirateShipCSV(allPendingMonthly, "Monthly Batch");
+      }
+      return;
+    }
+
+    generateAndDownloadPirateShipCSV(selectedList, `Monthly Batch (${selectedList.length})`);
+    setSelectedMonthlyIds(prev => {
+      const next = new Set(prev);
+      selectedList.forEach(s => next.delete(s.id));
+      return next;
+    });
   };
 
   const exportAttentionBatch = () => {
@@ -1395,7 +1418,7 @@ function App() {
           
           <OrderLink order={sub.order} />
           
-          {sub.delivery === 'ship' && !isShipped && hasSpecialAttentionOrNotes(sub) && (
+          {sub.delivery === 'ship' && sub.type !== 'monthly' && !isShipped && hasSpecialAttentionOrNotes(sub) && (
             <button
               type="button"
               onClick={(e) => {
@@ -1420,6 +1443,34 @@ function App() {
               title={selectedAttentionIds.has(sub.id) ? "Included in Attention Batch Export (Click to remove)" : "Click to include in Attention Batch Export"}
             >
               {selectedAttentionIds.has(sub.id) ? "✓ Ready for Export" : "+ Add to Export"}
+            </button>
+          )}
+
+          {sub.delivery === 'ship' && sub.type === 'monthly' && !isShipped && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleMonthlySelection(sub.id);
+              }}
+              style={{
+                background: selectedMonthlyIds.has(sub.id) ? "#4f46e5" : "var(--surface2)",
+                color: selectedMonthlyIds.has(sub.id) ? "#ffffff" : "var(--text2)",
+                border: selectedMonthlyIds.has(sub.id) ? "1px solid #4338ca" : "1px solid var(--border2)",
+                borderRadius: 4,
+                padding: "3px 8px",
+                fontSize: 10,
+                fontWeight: 700,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                fontFamily: "var(--font-mono)",
+                boxShadow: selectedMonthlyIds.has(sub.id) ? "0 1px 3px rgba(79, 70, 229, 0.3)" : "none"
+              }}
+              title={selectedMonthlyIds.has(sub.id) ? "Included in Monthly Batch (Click to remove)" : "Click to add to Monthly Batch"}
+            >
+              {selectedMonthlyIds.has(sub.id) ? "✓ Ready in Batch" : "+ Add to Batch"}
             </button>
           )}
 
@@ -1833,9 +1884,9 @@ function App() {
                       onClick={exportMonthlyBatch}
                       disabled={isExportingPirateShip}
                       style={{ 
-                        background: "#4f46e5", 
-                        color: "#ffffff", 
-                        border: "1px solid #4338ca", 
+                        background: selectedMonthlyIds.size > 0 ? "#4f46e5" : "var(--surface2)", 
+                        color: selectedMonthlyIds.size > 0 ? "#ffffff" : "var(--text)", 
+                        border: selectedMonthlyIds.size > 0 ? "1px solid #4338ca" : "1px solid var(--border2)", 
                         borderRadius: 6, 
                         padding: "6px 14px", 
                         fontSize: 11, 
@@ -1845,9 +1896,9 @@ function App() {
                         gap: 6, 
                         fontFamily: "var(--font-mono)",
                         fontWeight: 700,
-                        boxShadow: "0 2px 4px rgba(79, 70, 229, 0.2)"
+                        boxShadow: selectedMonthlyIds.size > 0 ? "0 2px 4px rgba(79, 70, 229, 0.2)" : "none"
                       }}
-                      title="Fetch live addresses from BigCommerce and export clean Monthly subscribers (no notes or flags)"
+                      title="Export selected monthly subscribers (or all pending) to Pirate Ship"
                     >
                       {isExportingPirateShip ? (
                         <>
@@ -1857,7 +1908,11 @@ function App() {
                       ) : (
                         <>
                           <Package size={12} />
-                          📦 Export Monthly Batch ({activeSubs.filter(s => s.delivery === 'ship' && !shipped.has(s.id) && s.type === 'monthly' && !hasSpecialAttentionOrNotes(s)).length})
+                          📦 Export Monthly Batch ({(() => {
+                            const pendingMonthly = activeSubs.filter(s => s.delivery === 'ship' && !shipped.has(s.id) && s.type === 'monthly');
+                            const readyCount = pendingMonthly.filter(s => selectedMonthlyIds.has(s.id)).length;
+                            return readyCount > 0 ? `${readyCount} ready` : `${pendingMonthly.length} total`;
+                          })()})
                         </>
                       )}
                     </button>
@@ -2005,27 +2060,60 @@ function App() {
 
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                               {type === 'monthly' && (
-                                <button
-                                  onClick={exportMonthlyBatch}
-                                  disabled={isExportingPirateShip}
-                                  style={{
-                                    background: '#4f46e5',
-                                    color: '#ffffff',
-                                    border: 'none',
-                                    borderRadius: 4,
-                                    padding: '3px 8px',
-                                    fontSize: 10,
-                                    cursor: isExportingPirateShip ? 'wait' : 'pointer',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: 4,
-                                    fontFamily: 'var(--font-mono)',
-                                    fontWeight: 700
-                                  }}
-                                  title="Export clean Monthly subscribers for Pirate Ship"
-                                >
-                                  <Package size={10} /> Export Batch
-                                </button>
+                                <>
+                                  {selectedMonthlyIds.size > 0 && (
+                                    <button
+                                      onClick={() => {
+                                        const idsToShip = Array.from(selectedMonthlyIds).filter(id => typeList.some(s => s.id === id));
+                                        bulkToggleShip(idsToShip, true);
+                                        setSelectedMonthlyIds(prev => {
+                                          const next = new Set(prev);
+                                          idsToShip.forEach(id => next.delete(id));
+                                          return next;
+                                        });
+                                      }}
+                                      style={{
+                                        background: '#059669',
+                                        color: '#ffffff',
+                                        border: 'none',
+                                        borderRadius: 4,
+                                        padding: '3px 8px',
+                                        fontSize: 10,
+                                        cursor: 'pointer',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: 4,
+                                        fontFamily: 'var(--font-mono)',
+                                        fontWeight: 700,
+                                        boxShadow: '0 1px 3px rgba(5, 150, 105, 0.3)'
+                                      }}
+                                      title={`Mark the ${selectedMonthlyIds.size} selected monthly subscribers as shipped`}
+                                    >
+                                      <Check size={10} strokeWidth={3} /> Ship Selected ({selectedMonthlyIds.size})
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={exportMonthlyBatch}
+                                    disabled={isExportingPirateShip}
+                                    style={{
+                                      background: selectedMonthlyIds.size > 0 ? '#4f46e5' : 'var(--surface)',
+                                      color: selectedMonthlyIds.size > 0 ? '#ffffff' : 'var(--text)',
+                                      border: selectedMonthlyIds.size > 0 ? '1px solid #4338ca' : '1px solid var(--border2)',
+                                      borderRadius: 4,
+                                      padding: '3px 8px',
+                                      fontSize: 10,
+                                      cursor: isExportingPirateShip ? 'wait' : 'pointer',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: 4,
+                                      fontFamily: 'var(--font-mono)',
+                                      fontWeight: 700
+                                    }}
+                                    title="Export selected monthly subscribers (or all) for Pirate Ship"
+                                  >
+                                    <Package size={10} /> {selectedMonthlyIds.size > 0 ? `Export Batch (${selectedMonthlyIds.size})` : 'Export Batch'}
+                                  </button>
+                                </>
                               )}
                               <button
                                 onClick={() => bulkToggleShip(typeList.map(s => s.id), true)}
